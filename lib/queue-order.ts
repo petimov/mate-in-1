@@ -21,9 +21,7 @@ export function sessionShouldShuffle(opts: {
   reviewOnly: boolean;
   firstPass: boolean;
 }): boolean {
-  if (opts.reviewOnly) return true;
-  if (opts.kind === "cviceni") return true;
-  return !opts.firstPass;
+  return opts.reviewOnly;
 }
 
 export function orderSessionPuzzles(

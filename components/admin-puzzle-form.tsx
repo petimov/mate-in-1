@@ -307,12 +307,14 @@ export function AdminPuzzleForm() {
                   id="chapter"
                   className="h-9 w-full rounded-md border border-border bg-background px-3 text-sm"
                   value={form.chapterId ?? ""}
-                  onChange={(event) =>
-                    setForm({
-                      ...form,
-                      chapterId: event.target.value || null,
-                    })
-                  }
+                  onChange={(event) => {
+                    const chapterId = event.target.value || null;
+                    setForm({ ...form, chapterId });
+                    setSelectedChapterId(chapterId);
+                    if (form.id) {
+                      void onMovePuzzle(form.id, chapterId);
+                    }
+                  }}
                 >
                   <option value="">Nezařazené</option>
                   {chapterOptions(curriculum, courseId).map((item) => (

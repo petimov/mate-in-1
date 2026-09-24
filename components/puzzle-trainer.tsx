@@ -25,6 +25,7 @@ import {
   chapterScopeIds,
   findCourse,
   resolveChapterPath,
+  sortPuzzles,
   withMateSubchapters,
   type Curriculum,
 } from "@/lib/curriculum";
@@ -152,8 +153,10 @@ export function PuzzleTrainer({
   const scoped = useMemo(() => {
     if (slugs.length === 0) return puzzles;
     if (!scopeIds) return puzzles;
-    return puzzles.filter(
-      (puzzle) => puzzle.chapterId && scopeIds.has(puzzle.chapterId),
+    return sortPuzzles(
+      puzzles.filter(
+        (puzzle) => puzzle.chapterId && scopeIds.has(puzzle.chapterId),
+      ),
     );
   }, [slugs.length, puzzles, scopeIds]);
 

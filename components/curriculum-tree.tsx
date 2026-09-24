@@ -21,6 +21,7 @@ import {
   nextSort,
   uniqueSlug,
   sortCourses,
+  sortPuzzles,
   puzzlesInChapter,
   nextChapterKind,
   chapterKindOf,
@@ -76,6 +77,7 @@ export function CurriculumTree({
   const [renameValue, setRenameValue] = useState("");
   const [renameCourseId, setRenameCourseId] = useState<string | null>(null);
   const [renameCourseValue, setRenameCourseValue] = useState("");
+  const [dropChapterId, setDropChapterId] = useState<string | null>(null);
 
   const courses = sortCourses(curriculum.courses);
   const course = courses.find((item) => item.id === courseId) ?? courses[0];
@@ -252,6 +254,21 @@ export function CurriculumTree({
     onMovePuzzle(puzzleId, puzzle.chapterId ?? null, puzzle.id);
   }
 
+  function movePuzzleDir(puzzle: Puzzle, dir: -1 | 1) {
+    const siblings = sortPuzzles(
+      puzzles.filter((item) => (item.chapterId ?? null) === (puzzle.chapterId ?? null)),
+    );
+    const index = siblings.findIndex((item) => item.id === puzzle.id);
+    const next = index + dir;
+    if (index < 0 || next < 0 || next >= siblings.length) return;
+    if (dir < 0) {
+      onMovePuzzle(puzzle.id, puzzle.chapterId ?? null, siblings[next].id);
+      return;
+    }
+    const after = siblings[next + 1];
+    onMovePuzzle(puzzle.id, puzzle.chapterId ?? null, after?.id);
+  }
+
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap gap-2">
@@ -357,6 +374,9 @@ export function CurriculumTree({
             onCycleKind={cycleKind}
             onDropChapter={onDropChapter}
             onDropBefore={onDropBefore}
+            onMovePuzzleDir={movePuzzleDir}
+            dropChapterId={dropChapterId}
+            setDropChapterId={setDropChapterId}
             onNewPuzzle={onNewPuzzle}
           />
         ))}
@@ -398,6 +418,9 @@ function ChapterNode({
   onCycleKind,
   onDropChapter,
   onDropBefore,
+  onMovePuzzleDir,
+  dropChapterId,
+  setDropChapterId,
   onNewPuzzle,
 }: {
   chapter: Chapter;
@@ -420,6 +443,9 @@ function ChapterNode({
   onCycleKind: (chapter: Chapter) => void;
   onDropChapter: (event: DragEvent, chapterId: string | null) => void;
   onDropBefore: (event: DragEvent, puzzle: Puzzle) => void;
+  onMovePuzzleDir: (puzzle: Puzzle, dir: -1 | 1) => void;
+  dropChapterId: string | null;
+  setDropChapterId: (id: string | null) => void;
   onNewPuzzle: (chapterId: string) => void;
 }) {
   const kids = childChapters(chapters, chapter.id);
@@ -429,13 +455,27 @@ function ChapterNode({
   return (
     <div
       className="mb-1"
-      onDragOver={(event) => event.preventDefault()}
-      onDrop={(event) => onDropChapter(event, chapter.id)}
+      onDragOver={(event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        setDropChapterId(chapter.id);
+      }}
+      onDragLeave={(event) => {
+        const next = event.relatedTarget as Node | null;
+        if (next && event.currentTarget.contains(next)) return;
+        if (dropChapterId === chapter.id) setDropChapterId(null);
+      }}
+      onDrop={(event) => {
+        event.stopPropagation();
+        setDropChapterId(null);
+        onDropChapter(event, chapter.id);
+      }}
     >
       <div
         className={cn(
           "flex items-center gap-1 rounded-md px-1 py-1",
           selectedChapterId === chapter.id ? "bg-[#81b64c]/15" : "hover:bg-foreground/5",
+          dropChapterId === chapter.id && "ring-2 ring-[#81b64c] bg-[#81b64c]/20",
         )}
       >
         <button
@@ -539,6 +579,9 @@ function ChapterNode({
               onCycleKind={onCycleKind}
               onDropChapter={onDropChapter}
               onDropBefore={onDropBefore}
+              onMovePuzzleDir={onMovePuzzleDir}
+              dropChapterId={dropChapterId}
+              setDropChapterId={setDropChapterId}
               onNewPuzzle={onNewPuzzle}
             />
           ))}
@@ -549,6 +592,7 @@ function ChapterNode({
               active={puzzle.id === selectedPuzzleId}
               onSelect={onSelectPuzzle}
               onDropBefore={onDropBefore}
+              onMoveDir={onMovePuzzleDir}
             />
           ))}
         </div>
@@ -562,34 +606,57 @@ function PuzzleRow({
   active,
   onSelect,
   onDropBefore,
+  onMoveDir,
 }: {
   puzzle: Puzzle;
   active: boolean;
   onSelect: (puzzle: Puzzle) => void;
   onDropBefore: (event: DragEvent, puzzle: Puzzle) => void;
+  onMoveDir: (puzzle: Puzzle, dir: -1 | 1) => void;
 }) {
   return (
-    <button
-      type="button"
+    <div
       draggable
       onDragStart={(event) => {
+        const target = event.target as HTMLElement;
+        if (target.closest("button")) {
+          event.preventDefault();
+          return;
+        }
         event.dataTransfer.setData("text/puzzle-id", puzzle.id);
         event.dataTransfer.effectAllowed = "move";
       }}
-      onDragOver={(event) => event.preventDefault()}
-      onDrop={(event) => onDropBefore(event, puzzle)}
-      onClick={() => onSelect(puzzle)}
+      onDragOver={(event) => {
+        event.preventDefault();
+        event.stopPropagation();
+      }}
+      onDrop={(event) => {
+        event.stopPropagation();
+        onDropBefore(event, puzzle);
+      }}
       className={cn(
         "mb-0.5 flex w-full items-center gap-1 rounded-md px-2 py-1.5 text-left text-sm",
         active ? "bg-muted text-foreground" : "text-muted-foreground hover:bg-foreground/5 hover:text-foreground",
       )}
     >
       <GripVertical className="size-3.5 shrink-0 text-muted-foreground" />
-      <span className="min-w-0 flex-1 truncate">{puzzle.title}</span>
+      <button
+        type="button"
+        className="min-w-0 flex-1 truncate text-left"
+        onClick={() => onSelect(puzzle)}
+      >
+        {puzzle.title}
+      </button>
       <span className="text-[10px] uppercase text-muted-foreground">
         {puzzleKind(puzzle) === "squares" ? "Pole" : "Tah"}
       </span>
-    </button>
+      <IconBtn title="Nahoru" onClick={() => onMoveDir(puzzle, -1)}>
+        <ChevronsUp className="size-3.5" />
+      </IconBtn>
+      <IconBtn title="Dolů" onClick={() => onMoveDir(puzzle, 1)}>
+        <ChevronsDown className="size-3.5" />
+      </IconBtn>
+    </div>
   );
 }
 
