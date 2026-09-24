@@ -10,16 +10,25 @@ import { Button } from "@/components/ui/button";
 import { fetchWithAuth } from "@/lib/auth-fetch";
 import type { BillingView } from "@/lib/billing-types";
 
+let liveCache: { userId: string; live: boolean } | null = null;
+
 export function JednotazkyGate({ children }: { children: ReactNode }) {
   const { user, ready } = useAuth();
   const pathname = usePathname();
-  const [loading, setLoading] = useState(true);
-  const [live, setLive] = useState(false);
+  const cached = user && liveCache?.userId === user.id ? liveCache.live : null;
+  const [loading, setLoading] = useState(cached === null);
+  const [live, setLive] = useState(cached ?? false);
 
   useEffect(() => {
     if (!ready) return;
     if (!user) {
+      liveCache = null;
       setLive(false);
+      setLoading(false);
+      return;
+    }
+    if (liveCache?.userId === user.id && liveCache.live) {
+      setLive(true);
       setLoading(false);
       return;
     }
@@ -30,7 +39,9 @@ export function JednotazkyGate({ children }: { children: ReactNode }) {
         const payload = (await response.json()) as {
           subscription?: BillingView | null;
         };
-        if (!cancelled) setLive(Boolean(payload.subscription?.live));
+        const next = Boolean(payload.subscription?.live);
+        liveCache = { userId: user.id, live: next };
+        if (!cancelled) setLive(next);
       })
       .catch(() => {
         if (!cancelled) setLive(false);
