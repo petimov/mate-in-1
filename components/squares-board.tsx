@@ -168,7 +168,6 @@ export const SquaresBoard = forwardRef<SquaresBoardHandle, SquaresBoardProps>(
         position: fen,
         boardOrientation: orientation,
         allowDragging: false,
-        showNotation: false,
         allowDrawingArrows: false,
         arrows: toChessboardArrows(markup),
         showAnimations: false,

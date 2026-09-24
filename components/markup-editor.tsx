@@ -269,7 +269,6 @@ export function MarkupEditor({
       boardOrientation: orientation,
       pieces,
       allowDragging: false,
-      showNotation: false,
       allowDrawingArrows: false,
       showAnimations: true,
       animationDurationInMs: 220,

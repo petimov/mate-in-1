@@ -231,7 +231,6 @@ function PlayMoveBoard({
       position,
       boardOrientation: orientation,
       allowDragging: !uci,
-      showNotation: false,
       showAnimations: true,
       animationDurationInMs: 250,
       pieces,

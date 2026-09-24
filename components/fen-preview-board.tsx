@@ -54,7 +54,6 @@ export function FenPreviewBoard({
       position,
       pieces,
       allowDragging: false,
-      showNotation: false,
       squareStyles,
       onSquareClick: onToggleSquare ? onSquareClick : undefined,
       boardStyle: {
