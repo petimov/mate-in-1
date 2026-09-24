@@ -1,28 +1,44 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useState, type ReactNode } from "react";
 import { usePathname } from "next/navigation";
 
 import { useAuth } from "@/components/auth-provider";
 import { SubscribeButton } from "@/components/subscribe-button";
 import { Button } from "@/components/ui/button";
+import { UlohySkeleton } from "@/components/ulohy-skeleton";
 import { fetchWithAuth } from "@/lib/auth-fetch";
 import type { BillingView } from "@/lib/billing-types";
+import { prefetchUlohy } from "@/lib/use-ulohy-data";
+import {
+  readLiveCache,
+  writeLiveCache,
+  type UlohyLive,
+} from "@/lib/ulohy-session";
 
-let liveCache: { userId: string; live: boolean } | null = null;
+let liveCache: UlohyLive | null = null;
 
 export function JednotazkyGate({ children }: { children: ReactNode }) {
   const { user, ready } = useAuth();
   const pathname = usePathname();
-  const cached = user && liveCache?.userId === user.id ? liveCache.live : null;
-  const [loading, setLoading] = useState(cached === null);
-  const [live, setLive] = useState(cached ?? false);
+  const [loading, setLoading] = useState(true);
+  const [live, setLive] = useState(false);
+
+  useLayoutEffect(() => {
+    if (!liveCache) liveCache = readLiveCache();
+    if (liveCache?.live) {
+      setLive(true);
+      setLoading(false);
+      prefetchUlohy();
+    }
+  }, []);
 
   useEffect(() => {
     if (!ready) return;
     if (!user) {
       liveCache = null;
+      writeLiveCache(null);
       setLive(false);
       setLoading(false);
       return;
@@ -30,10 +46,12 @@ export function JednotazkyGate({ children }: { children: ReactNode }) {
     if (liveCache?.userId === user.id && liveCache.live) {
       setLive(true);
       setLoading(false);
+      prefetchUlohy();
       return;
     }
     let cancelled = false;
-    setLoading(true);
+    prefetchUlohy();
+    if (!live && !liveCache?.live) setLoading(true);
     void fetchWithAuth("/api/stripe/subscription")
       .then(async (response) => {
         const payload = (await response.json()) as {
@@ -41,6 +59,7 @@ export function JednotazkyGate({ children }: { children: ReactNode }) {
         };
         const next = Boolean(payload.subscription?.live);
         liveCache = { userId: user.id, live: next };
+        writeLiveCache(liveCache);
         if (!cancelled) setLive(next);
       })
       .catch(() => {
@@ -52,17 +71,10 @@ export function JednotazkyGate({ children }: { children: ReactNode }) {
     return () => {
       cancelled = true;
     };
-  }, [ready, user]);
+  }, [ready, user, live]);
 
-  if (user && (live || (liveCache?.userId === user.id && liveCache.live))) {
-    return children;
-  }
-  if ((!ready || loading) && live) {
-    return children;
-  }
-  if (!ready || loading) {
-    return <div className="min-h-0 flex-1 bg-background" />;
-  }
+  if (live) return children;
+  if (!ready || loading) return <UlohySkeleton />;
   if (!user) {
     const next = `/ucet?next=${encodeURIComponent(pathname || "/ulohy")}`;
     return (

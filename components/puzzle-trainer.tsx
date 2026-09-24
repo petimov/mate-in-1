@@ -43,8 +43,6 @@ import {
   orderSessionPuzzles,
   sessionShouldShuffle,
 } from "@/lib/queue-order";
-import { softUlohyGo } from "@/lib/ulohy-nav";
-
 function kindFromWindow(): PuzzleKind | "all" {
   if (typeof window === "undefined") return "all";
   const kind = new URLSearchParams(window.location.search).get("kind");
@@ -209,12 +207,6 @@ export function PuzzleTrainer({
   const puzzle = list[index];
   const kind = puzzle ? puzzleKind(puzzle) : "move";
   const isSquares = kind === "squares";
-
-  useEffect(() => {
-    if (!reviewOnly || !user || !srsReady) return;
-    if (queue.length > 0) return;
-    softUlohyGo(backHref ?? "/ulohy", true);
-  }, [backHref, queue.length, reviewOnly, srsReady, user]);
 
   const startFen = useMemo(() => {
     if (!puzzle) return "";
@@ -422,7 +414,7 @@ export function PuzzleTrainer({
       <section className="flex min-h-0 flex-col bg-background">
         <div className="flex min-h-0 flex-1 items-center justify-center p-3 sm:p-4">
           <div className="relative w-full max-w-[min(100%,calc(100dvh-11rem))]">
-            {!srsReady || (loading && !puzzle) || (reviewOnly && doneToday) ? (
+            {!srsReady || (loading && !puzzle && !doneToday) ? (
               <div className="aspect-square w-full rounded-xl bg-muted/50" />
             ) : doneToday ? (
               <div className="rounded-xl border border-border bg-card p-8 text-center text-sm text-muted-foreground">

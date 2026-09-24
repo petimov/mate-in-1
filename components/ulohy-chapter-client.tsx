@@ -2,6 +2,7 @@
 
 import { ChapterCatalog } from "@/components/chapter-catalog";
 import { PuzzleTrainer } from "@/components/puzzle-trainer";
+import { UlohySkeleton } from "@/components/ulohy-skeleton";
 import {
   chapterParam,
   childChapters,
@@ -18,7 +19,7 @@ export function UlohyChapterClient({
   chapterSlug?: string[];
 }) {
   const { curriculum, puzzles, error, loading } = useUlohyData();
-  if (loading) return null;
+  if (loading) return <UlohySkeleton />;
   if (error || !curriculum || !puzzles) {
     return (
       <p className="p-6 text-sm text-red-500">{error || "Úlohy nejsou."}</p>

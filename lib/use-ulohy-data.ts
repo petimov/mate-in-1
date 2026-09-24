@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useState } from "react";
 
 import { fetchWithAuth } from "@/lib/auth-fetch";
 import {
@@ -10,14 +10,22 @@ import {
   type Curriculum,
 } from "@/lib/curriculum";
 import type { Puzzle } from "@/lib/types";
+import {
+  readUlohyCache,
+  writeUlohyCache,
+  type UlohyDataCache,
+} from "@/lib/ulohy-session";
 
-type Cache = {
-  curriculum: Curriculum;
-  puzzles: Puzzle[];
-};
+type Cache = UlohyDataCache;
 
 let cache: Cache | null = null;
 let inflight: Promise<Cache | string> | null = null;
+
+function bootCache() {
+  if (cache) return cache;
+  cache = readUlohyCache();
+  return cache;
+}
 
 async function loadUlohy(): Promise<Cache | string> {
   if (inflight) return inflight;
@@ -46,11 +54,16 @@ async function loadUlohy(): Promise<Cache | string> {
       puzzles: bindPuzzlesToCurriculum(nextPuzzles, nextCurriculum.chapters),
     };
     cache = next;
+    writeUlohyCache(next);
     return next;
   })().finally(() => {
     inflight = null;
   });
   return inflight;
+}
+
+export function prefetchUlohy() {
+  void loadUlohy();
 }
 
 export function useUlohyData() {
@@ -62,19 +75,28 @@ export function useUlohyData() {
   );
   const [error, setError] = useState<string | null>(null);
 
+  useLayoutEffect(() => {
+    const boot = bootCache();
+    if (!boot) return;
+    setCurriculum(boot.curriculum);
+    setPuzzles(boot.puzzles);
+  }, []);
+
   useEffect(() => {
     let cancelled = false;
-    void loadUlohy().then((next) => {
-      if (cancelled) return;
-      if (typeof next === "string") {
-        setError(next);
-        return;
-      }
-      setCurriculum(next.curriculum);
-      setPuzzles(next.puzzles);
-    }).catch(() => {
-      if (!cancelled) setError("Úlohy se nenačetly.");
-    });
+    void loadUlohy()
+      .then((next) => {
+        if (cancelled) return;
+        if (typeof next === "string") {
+          setError(next);
+          return;
+        }
+        setCurriculum(next.curriculum);
+        setPuzzles(next.puzzles);
+      })
+      .catch(() => {
+        if (!cancelled) setError("Úlohy se nenačetly.");
+      });
     return () => {
       cancelled = true;
     };

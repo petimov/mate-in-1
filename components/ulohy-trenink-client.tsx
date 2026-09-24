@@ -1,12 +1,13 @@
 "use client";
 
 import { PuzzleTrainer } from "@/components/puzzle-trainer";
+import { UlohySkeleton } from "@/components/ulohy-skeleton";
 import { descendantIds, findCourse } from "@/lib/curriculum";
 import { useUlohyData } from "@/lib/use-ulohy-data";
 
 export function UlohyTreninkClient({ chapterId }: { chapterId?: string }) {
   const { curriculum, puzzles, error, loading } = useUlohyData();
-  if (loading) return null;
+  if (loading) return <UlohySkeleton />;
   if (error || !curriculum || !puzzles) {
     return (
       <p className="p-6 text-sm text-red-500">{error || "Úlohy nejsou."}</p>

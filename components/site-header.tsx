@@ -9,6 +9,7 @@ import { ThemeToggle } from "@/components/theme-toggle";
 import { UserAvatar } from "@/components/user-avatar";
 import { SCHOOL } from "@/lib/school";
 import { useClientPathname } from "@/lib/use-client-path";
+import { useUlohyLive } from "@/lib/use-ulohy-live";
 import { cn } from "@/lib/utils";
 
 const LINKS = [
@@ -26,9 +27,11 @@ const HOME_LINKS = [
 export function SiteHeader() {
   const pathname = useClientPathname();
   const { user, ready } = useAuth();
+  const { live } = useUlohyLive();
   const [stuck, setStuck] = useState(false);
 
   const home = pathname === "/";
+  const homeHref = user && live ? "/ulohy" : "/";
 
   useEffect(() => {
     if (!home) {
@@ -60,7 +63,7 @@ export function SiteHeader() {
         )}
       >
         <Link
-          href="/"
+          href={homeHref}
           className={cn(
             "flex shrink-0 items-center gap-2 tracking-tight",
             home ? "home-logo" : "text-sm font-semibold",

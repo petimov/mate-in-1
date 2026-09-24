@@ -7,6 +7,7 @@ import { UlohyChapterClient } from "@/components/ulohy-chapter-client";
 import { UlohyTreninkClient } from "@/components/ulohy-trenink-client";
 import { onUlohyLocation } from "@/lib/ulohy-nav";
 import { useClientPathname } from "@/lib/use-client-path";
+import { useUlohyData } from "@/lib/use-ulohy-data";
 
 function ulohyParts(pathname: string) {
   return pathname
@@ -23,7 +24,9 @@ function treninkChapter() {
 
 export function UlohyRouter() {
   const pathname = useClientPathname();
+  const { loading } = useUlohyData();
   const [chapterId, setChapterId] = useState<string | undefined>(undefined);
+  const [shown, setShown] = useState({ pathname, chapterId });
 
   useEffect(() => {
     const sync = () => setChapterId(treninkChapter());
@@ -31,12 +34,17 @@ export function UlohyRouter() {
     return onUlohyLocation(sync);
   }, [pathname]);
 
-  const parts = ulohyParts(pathname);
+  useEffect(() => {
+    if (loading) return;
+    setShown({ pathname, chapterId });
+  }, [pathname, chapterId, loading]);
+
+  const parts = ulohyParts(shown.pathname);
 
   if (parts[0] === "trenink") {
     return (
       <main className="flex min-h-0 flex-1 flex-col overflow-hidden">
-        <UlohyTreninkClient chapterId={chapterId} />
+        <UlohyTreninkClient chapterId={shown.chapterId} />
       </main>
     );
   }

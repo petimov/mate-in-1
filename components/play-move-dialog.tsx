@@ -78,7 +78,7 @@ export function PlayMoveDialog({
         aria-label="Zavřít"
         onClick={onClose}
       />
-      <div className="relative z-10 flex h-[96vh] w-max max-w-[96vw] flex-col rounded-xl border border-border bg-card p-4 shadow-2xl">
+      <div className="relative z-10 flex max-h-[96vh] w-[min(28rem,calc(96vw-1.5rem))] flex-col overflow-auto rounded-xl border border-border bg-card p-4 shadow-2xl">
         <div className="mb-3 flex shrink-0 items-center justify-between gap-3">
           <h2 className="text-lg font-semibold">{title}</h2>
           <button
@@ -279,11 +279,8 @@ function PlayMoveBoard({
   const san = uci ? uciToSan(fen, uci) : "";
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
-      <BoardFrame
-        orientation={orientation}
-        className="aspect-square size-[min(calc(96vw-2rem),calc(96vh-10.5rem))]"
-      >
+    <div className="flex w-full flex-col">
+      <BoardFrame orientation={orientation} className="aspect-square w-full">
         <div
           className="h-full w-full"
           data-turn={position.split(/\s+/)[1] === "b" ? "b" : "w"}

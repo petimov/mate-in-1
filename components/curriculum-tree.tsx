@@ -74,6 +74,8 @@ export function CurriculumTree({
   });
   const [renameId, setRenameId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
+  const [renameCourseId, setRenameCourseId] = useState<string | null>(null);
+  const [renameCourseValue, setRenameCourseValue] = useState("");
 
   const courses = sortCourses(curriculum.courses);
   const course = courses.find((item) => item.id === courseId) ?? courses[0];
@@ -101,6 +103,48 @@ export function CurriculumTree({
     });
     setNewCourse("");
     onSelectCourse(id);
+  }
+
+  function renameCourse(id: string) {
+    const title = renameCourseValue.trim();
+    setRenameCourseId(null);
+    if (!title) return;
+    const current = curriculum.courses.find((item) => item.id === id);
+    if (!current) return;
+    const slug = uniqueSlug(
+      title,
+      curriculum.courses
+        .filter((item) => item.id !== id)
+        .map((item) => item.slug),
+    );
+    onCurriculum({
+      ...curriculum,
+      courses: curriculum.courses.map((item) =>
+        item.id === id ? { ...item, title, slug } : item,
+      ),
+    });
+  }
+
+  function deleteCourse(id: string) {
+    if (curriculum.courses.length <= 1) return;
+    const drop = new Set(
+      curriculum.chapters
+        .filter((item) => item.courseId === id)
+        .map((item) => item.id),
+    );
+    for (const puzzle of puzzles) {
+      if (puzzle.chapterId && drop.has(puzzle.chapterId)) {
+        onMovePuzzle(puzzle.id, null);
+      }
+    }
+    const nextCourses = curriculum.courses.filter((item) => item.id !== id);
+    onCurriculum({
+      ...curriculum,
+      courses: nextCourses,
+      chapters: curriculum.chapters.filter((item) => item.courseId !== id),
+    });
+    if (courseId === id) onSelectCourse(nextCourses[0]?.id ?? "");
+    if (selectedChapterId && drop.has(selectedChapterId)) onSelectChapter(null);
   }
 
   function addChapter(parentId: string | null) {
@@ -212,19 +256,66 @@ export function CurriculumTree({
     <div className="space-y-3">
       <div className="flex flex-wrap gap-2">
         {courses.map((item) => (
-          <button
+          <div
             key={item.id}
-            type="button"
             className={cn(
-              "rounded-md px-3 py-1.5 text-sm",
+              "flex items-center gap-0.5 rounded-md pl-2",
               item.id === course?.id
                 ? "bg-[#81b64c] text-zinc-950"
                 : "bg-muted text-muted-foreground",
             )}
-            onClick={() => onSelectCourse(item.id)}
           >
-            {item.title}
-          </button>
+            {renameCourseId === item.id ? (
+              <Input
+                value={renameCourseValue}
+                className="h-7 w-36 text-sm"
+                autoFocus
+                onChange={(event) => setRenameCourseValue(event.target.value)}
+                onBlur={() => renameCourse(item.id)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") renameCourse(item.id);
+                  if (event.key === "Escape") setRenameCourseId(null);
+                }}
+              />
+            ) : (
+              <button
+                type="button"
+                className="px-1 py-1.5 text-sm"
+                onClick={() => onSelectCourse(item.id)}
+              >
+                {item.title}
+              </button>
+            )}
+            <IconBtn
+              title="Přejmenovat kurz"
+              onClick={() => {
+                setRenameCourseId(item.id);
+                setRenameCourseValue(item.title);
+              }}
+            >
+              <Pencil className="size-3.5" />
+            </IconBtn>
+            <IconBtn
+              title={
+                courses.length <= 1
+                  ? "Poslední kurz nejde smazat"
+                  : "Smazat kurz"
+              }
+              onClick={() => {
+                if (courses.length <= 1) return;
+                if (
+                  !window.confirm(
+                    `Smazat kurz „${item.title}“ i jeho kapitoly?`,
+                  )
+                ) {
+                  return;
+                }
+                deleteCourse(item.id);
+              }}
+            >
+              <Trash2 className="size-3.5" />
+            </IconBtn>
+          </div>
         ))}
       </div>
       <div className="flex gap-2">
@@ -232,6 +323,9 @@ export function CurriculumTree({
           placeholder="Nový kurz"
           value={newCourse}
           onChange={(event) => setNewCourse(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") addCourse();
+          }}
         />
         <Button type="button" variant="outline" onClick={addCourse}>
           <Plus className="size-4" />

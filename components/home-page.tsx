@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import { HomePhoto } from "@/components/home-photo";
+import { HomeSubscriberRedirect } from "@/components/home-subscriber-redirect";
 import { FOUNDER } from "@/lib/coaches";
 import { SCHOOL } from "@/lib/school";
 
@@ -57,6 +58,7 @@ const STEPS = [
 export function HomePage() {
   return (
     <main className="home-root min-h-0 flex-1 overflow-y-auto">
+      <HomeSubscriberRedirect />
       <section className="home-hero">
         <div className="home-hero-row">
           <div className="home-copy">
