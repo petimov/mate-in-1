@@ -21,7 +21,6 @@ import {
   nextSort,
   uniqueSlug,
   sortCourses,
-  unassignedPuzzles,
   puzzlesInChapter,
   nextChapterKind,
   chapterKindOf,
@@ -81,8 +80,6 @@ export function CurriculumTree({
   const roots = course
     ? childChapters(curriculum.chapters, null, course.id)
     : [];
-  const loose = unassignedPuzzles(puzzles);
-
   function setChapters(chapters: Chapter[]) {
     onCurriculum({ ...curriculum, chapters });
   }
@@ -269,29 +266,6 @@ export function CurriculumTree({
             onNewPuzzle={onNewPuzzle}
           />
         ))}
-
-        <div
-          className="mt-2 rounded-md border border-dashed border-white/10 p-2"
-          onDragOver={(event) => event.preventDefault()}
-          onDrop={(event) => onDropChapter(event, null)}
-        >
-          <p className="mb-1 px-1 text-[11px] uppercase tracking-wide text-muted-foreground">
-            Nezařazené
-          </p>
-          {loose.length === 0 ? (
-            <p className="px-1 text-xs text-muted-foreground">Sem přetáhni úlohu.</p>
-          ) : (
-            loose.map((puzzle) => (
-              <PuzzleRow
-                key={puzzle.id}
-                puzzle={puzzle}
-                active={puzzle.id === selectedPuzzleId}
-                onSelect={onSelectPuzzle}
-                onDropBefore={onDropBefore}
-              />
-            ))
-          )}
-        </div>
       </div>
 
       <div className="flex gap-2">
