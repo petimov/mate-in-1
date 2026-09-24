@@ -61,8 +61,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (cancelled) return;
       const next = data.session?.user ?? null;
       applyUser(next);
-      await syncSrs(next);
       if (!cancelled) setReady(true);
+      void syncSrs(next);
     }
     void boot();
 

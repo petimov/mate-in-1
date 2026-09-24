@@ -19,7 +19,7 @@ export function BoardSettingsMenu({ compact = false }: { compact?: boolean }) {
     const btn = btnRef.current;
     if (!btn) return;
     const r = btn.getBoundingClientRect();
-    const height = Math.min(440, window.innerHeight - 24);
+    const height = Math.min(520, window.innerHeight - 24);
     const pad = 12;
     let left = compact ? r.left : r.right - PANEL_W;
     let top = r.bottom + 8;
@@ -76,7 +76,7 @@ export function BoardSettingsMenu({ compact = false }: { compact?: boolean }) {
       </span>
       {open ? (
         <div
-          className="fixed z-50 w-[22rem] max-h-[min(440px,calc(100dvh-24px))] overflow-y-auto rounded-xl border border-border bg-card p-4 shadow-2xl"
+          className="fixed z-50 w-[22rem] max-h-[min(520px,calc(100dvh-24px))] overflow-y-auto rounded-xl border border-border bg-card p-4 shadow-2xl"
           style={{ top: pos.top, left: pos.left }}
         >
           <BoardLookPicker />

@@ -9,10 +9,21 @@ import {
   piecePreviewUrl,
   woodGrainUrl,
 } from "@/lib/board-appearance";
+import {
+  BOARD_SOUND_PACKS,
+  playBoardSound,
+  type BoardSoundPack,
+} from "@/lib/board-sound";
 import { cn } from "@/lib/utils";
 
 export function BoardLookPicker() {
-  const { boardId, pieceId, setBoardId, setPieceId } = useBoardAppearance();
+  const { boardId, pieceId, soundPack, setBoardId, setPieceId, setSoundPack } =
+    useBoardAppearance();
+
+  function pickSound(id: BoardSoundPack) {
+    setSoundPack(id);
+    playBoardSound("move");
+  }
 
   return (
     <div>
@@ -49,6 +60,26 @@ export function BoardLookPicker() {
                 />
               ))}
             </span>
+          </button>
+        ))}
+      </div>
+      <p className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+        Zvuk tahu
+      </p>
+      <div className="mb-4 grid grid-cols-2 gap-2">
+        {BOARD_SOUND_PACKS.map((item) => (
+          <button
+            key={item.id}
+            type="button"
+            onClick={() => pickSound(item.id)}
+            className={cn(
+              "rounded-md border px-2 py-1.5 text-xs font-medium",
+              soundPack === item.id
+                ? "border-primary bg-primary/10 text-foreground"
+                : "border-border text-muted-foreground hover:bg-foreground/5",
+            )}
+          >
+            {item.name}
           </button>
         ))}
       </div>

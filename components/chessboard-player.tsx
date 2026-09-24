@@ -118,10 +118,18 @@ export const ChessboardPlayer = memo(function ChessboardPlayer({
     const pieceType = pieceTypeAt(game, orig);
     const solution = expectedRef.current.toLowerCase();
     const uci = dropToUci(orig, dest, pieceType, solution);
-    const capture = Boolean(game.get(dest as Square));
+    const destPiece = game.get(dest as Square);
+    const fromPiece = game.get(orig as Square);
+    const enPassant =
+      fromPiece?.type === "p" && orig[0] !== dest[0] && !destPiece;
+    const capture = Boolean(destPiece) || enPassant;
 
     if (uci === solution && applyUci(game, uci)) {
-      playBoardSound(capture ? "capture" : "move");
+      const checked =
+        typeof (game as { isCheck?: () => boolean }).isCheck === "function"
+          ? Boolean((game as { isCheck: () => boolean }).isCheck())
+          : false;
+      playBoardSound(checked ? "check" : capture ? "capture" : "move");
       setIncorrect(false);
       api.set({
         lastMove: [orig, dest],

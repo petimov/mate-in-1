@@ -5,6 +5,11 @@ import {
   isPieceSetId,
 } from "@/lib/board-appearance";
 import {
+  DEFAULT_SOUND_PACK,
+  isBoardSoundPack,
+  type BoardSoundPack,
+} from "@/lib/board-sound";
+import {
   DEFAULT_REVIEW_PREFS,
   normalizeReviewPrefs,
   type ReviewPrefs,
@@ -14,12 +19,14 @@ export type Prefs = {
   theme: "light" | "dark";
   boardId: string;
   pieceId: string;
+  soundPack: BoardSoundPack;
 } & ReviewPrefs;
 
 export const DEFAULT_PREFS: Prefs = {
   theme: "dark",
   boardId: DEFAULT_BOARD_ID,
   pieceId: DEFAULT_PIECE_ID,
+  soundPack: DEFAULT_SOUND_PACK,
   ...DEFAULT_REVIEW_PREFS,
 };
 
@@ -33,6 +40,9 @@ export function prefsFromMetadata(meta: unknown): Partial<Prefs> {
   }
   if (typeof data.pieceId === "string" && isPieceSetId(data.pieceId)) {
     next.pieceId = data.pieceId;
+  }
+  if (typeof data.soundPack === "string" && isBoardSoundPack(data.soundPack)) {
+    next.soundPack = data.soundPack;
   }
   const hasReview =
     "goodIntervals" in data ||

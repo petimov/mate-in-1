@@ -2,21 +2,26 @@ import { NextResponse } from "next/server";
 
 import { isAdminAuthenticated } from "@/lib/admin-auth";
 import { userFromBearer } from "@/lib/auth-request";
-import { loadBillingForUser } from "@/lib/stripe-billing";
+import {
+  isLiveAccess,
+  loadStoredSubscriptions,
+  rankSubscriptions,
+} from "@/lib/billing-store";
 
 export async function denyUnlessUlohyAccess(
   request: Request,
 ): Promise<NextResponse | null> {
-  if (await isAdminAuthenticated()) return null;
-  const user = await userFromBearer(request);
+  const [admin, user] = await Promise.all([
+    isAdminAuthenticated(),
+    userFromBearer(request),
+  ]);
+  if (admin) return null;
   if (!user?.email) {
     return NextResponse.json({ error: "Nejdřív se přihlas." }, { status: 401 });
   }
-  try {
-    const billing = await loadBillingForUser(user.id, user.email);
-    if (billing?.live) return null;
-  } catch {
-    return NextResponse.json({ error: "Předplatné nejde ověřit." }, { status: 502 });
+  const stored = rankSubscriptions(await loadStoredSubscriptions(user.id))[0];
+  if (stored && isLiveAccess(stored.status, stored.current_period_end)) {
+    return null;
   }
   return NextResponse.json(
     { error: "Jednotažky jsou v předplatném." },

@@ -15,8 +15,10 @@ export function PrefsCloudSync() {
   const {
     boardId,
     pieceId,
+    soundPack,
     setBoardId,
     setPieceId,
+    setSoundPack,
     hydrated: boardReady,
   } = useBoardAppearance();
   const {
@@ -39,6 +41,7 @@ export function PrefsCloudSync() {
     if (remote.theme) setMode(remote.theme);
     if (remote.boardId) setBoardId(remote.boardId);
     if (remote.pieceId) setPieceId(remote.pieceId);
+    if (remote.soundPack) setSoundPack(remote.soundPack);
     if (
       remote.goodIntervals !== undefined ||
       remote.againIntervals !== undefined ||
@@ -55,6 +58,7 @@ export function PrefsCloudSync() {
       theme: remote.theme ?? mode,
       boardId: remote.boardId ?? boardId,
       pieceId: remote.pieceId ?? pieceId,
+      soundPack: remote.soundPack ?? soundPack,
       goodIntervals: remote.goodIntervals ?? review.goodIntervals,
       againIntervals: remote.againIntervals ?? review.againIntervals,
       againTimes: remote.againTimes ?? review.againTimes,
@@ -71,10 +75,12 @@ export function PrefsCloudSync() {
     mode,
     boardId,
     pieceId,
+    soundPack,
     review,
     setMode,
     setBoardId,
     setPieceId,
+    setSoundPack,
     setReview,
   ]);
 
@@ -85,6 +91,7 @@ export function PrefsCloudSync() {
       theme: mode,
       boardId,
       pieceId,
+      soundPack,
       goodIntervals: review.goodIntervals,
       againIntervals: review.againIntervals,
       againTimes: review.againTimes,
@@ -107,6 +114,7 @@ export function PrefsCloudSync() {
     mode,
     boardId,
     pieceId,
+    soundPack,
     review,
   ]);
 
