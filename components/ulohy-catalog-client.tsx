@@ -11,7 +11,7 @@ export function UlohyCatalogClient({
   chapterSlug?: string | string[];
 }) {
   const { curriculum, puzzles, error, loading } = useUlohyData();
-  if (loading) return <div className="min-h-0 flex-1 bg-background" />;
+  if (loading) return null;
   if (error || !curriculum || !puzzles) {
     return (
       <p className="p-6 text-sm text-red-500">{error || "Úlohy nejsou."}</p>

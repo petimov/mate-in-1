@@ -1,7 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
-import Link from "next/link";
+import { UlohyLink as Link } from "@/components/ulohy-link";
 import { BookOpen, RotateCcw } from "lucide-react";
 
 import { useAuth } from "@/components/auth-provider";

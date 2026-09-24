@@ -1,7 +1,6 @@
 "use client";
 
-import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { UlohyLink as Link } from "@/components/ulohy-link";
 import { useEffect, useState } from "react";
 
 import { useAuth } from "@/components/auth-provider";
@@ -9,6 +8,7 @@ import { KnightMark } from "@/components/knight-mark";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { UserAvatar } from "@/components/user-avatar";
 import { SCHOOL } from "@/lib/school";
+import { useClientPathname } from "@/lib/use-client-path";
 import { cn } from "@/lib/utils";
 
 const LINKS = [
@@ -24,7 +24,7 @@ const HOME_LINKS = [
 ];
 
 export function SiteHeader() {
-  const pathname = usePathname();
+  const pathname = useClientPathname();
   const { user, ready } = useAuth();
   const [stuck, setStuck] = useState(false);
 

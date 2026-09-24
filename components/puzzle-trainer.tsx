@@ -2,8 +2,7 @@
 
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ChevronRight } from "lucide-react";
-import Link from "next/link";
-import { useParams, useRouter, useSearchParams } from "next/navigation";
+import { UlohyLink as Link } from "@/components/ulohy-link";
 
 import { ChessboardPlayer } from "@/components/chessboard-player";
 import { PuzzleDetailsCard } from "@/components/puzzle-details-card";
@@ -44,6 +43,13 @@ import {
   orderSessionPuzzles,
   sessionShouldShuffle,
 } from "@/lib/queue-order";
+import { softUlohyGo } from "@/lib/ulohy-nav";
+
+function kindFromWindow(): PuzzleKind | "all" {
+  if (typeof window === "undefined") return "all";
+  const kind = new URLSearchParams(window.location.search).get("kind");
+  return kind === "squares" || kind === "move" ? kind : "all";
+}
 
 type PuzzleTrainerProps = {
   initialCurriculum?: Curriculum;
@@ -52,6 +58,8 @@ type PuzzleTrainerProps = {
   backHref?: string;
   backLabel?: string;
   reviewOnly?: boolean;
+  courseSlug?: string;
+  chapterSlug?: string[];
 };
 
 export function PuzzleTrainer({
@@ -61,15 +69,12 @@ export function PuzzleTrainer({
   backHref,
   backLabel,
   reviewOnly = false,
+  courseSlug,
+  chapterSlug,
 }: PuzzleTrainerProps) {
   const { user, ready: authReady } = useAuth();
-  const router = useRouter();
-  const searchParams = useSearchParams();
-  const params = useParams<{ course?: string; chapter?: string | string[] }>();
-  const slugs = chapterParam(params.chapter);
-  const kindParam = searchParams.get("kind");
-  const startKind: PuzzleKind | "all" =
-    kindParam === "squares" || kindParam === "move" ? kindParam : "all";
+  const slugs = chapterParam(chapterSlug);
+  const startKind = kindFromWindow();
 
   const [puzzles, setPuzzles] = useState<Puzzle[]>(initialPuzzles ?? []);
   const [curriculum, setCurriculum] = useState<Curriculum>(
@@ -136,7 +141,7 @@ export function PuzzleTrainer({
     };
   }, []);
 
-  const course = findCourse(curriculum, params.course);
+  const course = findCourse(curriculum, courseSlug);
   const chapter = course
     ? resolveChapterPath(curriculum, course.id, slugs)
     : undefined;
@@ -144,7 +149,7 @@ export function PuzzleTrainer({
     ? curriculum.chapters.find((item) => item.id === chapter.parentId)
     : undefined;
   const lastSlug = slugs[slugs.length - 1];
-  const scopeIds = chapterScopeIds(curriculum, params.course, lastSlug);
+  const scopeIds = chapterScopeIds(curriculum, courseSlug, lastSlug);
 
   const scoped = useMemo(() => {
     if (slugs.length === 0) return puzzles;
@@ -208,8 +213,8 @@ export function PuzzleTrainer({
   useEffect(() => {
     if (!reviewOnly || !user || !srsReady) return;
     if (queue.length > 0) return;
-    router.replace(backHref ?? "/ulohy");
-  }, [backHref, queue.length, reviewOnly, router, srsReady, user]);
+    softUlohyGo(backHref ?? "/ulohy", true);
+  }, [backHref, queue.length, reviewOnly, srsReady, user]);
 
   const startFen = useMemo(() => {
     if (!puzzle) return "";

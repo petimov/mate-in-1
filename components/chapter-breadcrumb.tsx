@@ -1,7 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
-import Link from "next/link";
+import { UlohyLink as Link } from "@/components/ulohy-link";
 import { ChevronRight } from "lucide-react";
 
 import {

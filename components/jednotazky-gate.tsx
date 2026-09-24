@@ -54,6 +54,12 @@ export function JednotazkyGate({ children }: { children: ReactNode }) {
     };
   }, [ready, user]);
 
+  if (user && (live || (liveCache?.userId === user.id && liveCache.live))) {
+    return children;
+  }
+  if ((!ready || loading) && live) {
+    return children;
+  }
   if (!ready || loading) {
     return <div className="min-h-0 flex-1 bg-background" />;
   }

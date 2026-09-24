@@ -1,10 +1,12 @@
 "use client";
 
-import { usePathname, useSearchParams } from "next/navigation";
+import { useEffect, useState } from "react";
 
 import { UlohyCatalogClient } from "@/components/ulohy-catalog-client";
 import { UlohyChapterClient } from "@/components/ulohy-chapter-client";
 import { UlohyTreninkClient } from "@/components/ulohy-trenink-client";
+import { onUlohyLocation } from "@/lib/ulohy-nav";
+import { useClientPathname } from "@/lib/use-client-path";
 
 function ulohyParts(pathname: string) {
   return pathname
@@ -14,28 +16,32 @@ function ulohyParts(pathname: string) {
     .map((part) => decodeURIComponent(part));
 }
 
+function treninkChapter() {
+  if (typeof window === "undefined") return undefined;
+  return new URLSearchParams(window.location.search).get("chapter") ?? undefined;
+}
+
 export function UlohyRouter() {
-  const pathname = usePathname();
-  const search = useSearchParams();
+  const pathname = useClientPathname();
+  const [chapterId, setChapterId] = useState<string | undefined>(undefined);
+
+  useEffect(() => {
+    const sync = () => setChapterId(treninkChapter());
+    sync();
+    return onUlohyLocation(sync);
+  }, [pathname]);
+
   const parts = ulohyParts(pathname);
 
   if (parts[0] === "trenink") {
     return (
       <main className="flex min-h-0 flex-1 flex-col overflow-hidden">
-        <UlohyTreninkClient chapterId={search.get("chapter") ?? undefined} />
+        <UlohyTreninkClient chapterId={chapterId} />
       </main>
     );
   }
 
-  if (parts.length === 0) {
-    return (
-      <main className="min-h-0 flex-1 overflow-y-auto">
-        <UlohyCatalogClient />
-      </main>
-    );
-  }
-
-  if (parts.length === 1) {
+  if (parts.length <= 1) {
     return (
       <main className="min-h-0 flex-1 overflow-y-auto">
         <UlohyCatalogClient courseSlug={parts[0]} />

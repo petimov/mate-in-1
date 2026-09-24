@@ -7,6 +7,7 @@ import { BoardAppearanceProvider } from "@/components/board-appearance-provider"
 import { PrefsCloudSync } from "@/components/prefs-cloud-sync";
 import { ReviewPrefsProvider } from "@/components/review-prefs-provider";
 import { SiteHeader } from "@/components/site-header";
+import { UlohySoftNav } from "@/components/ulohy-soft-nav";
 import { ThemeProvider } from "@/components/theme-provider";
 import { THEME_BOOT_SCRIPT } from "@/lib/theme";
 import { SCHOOL } from "@/lib/school";
@@ -53,6 +54,7 @@ export default function RootLayout({
             <BoardAppearanceProvider>
               <ReviewPrefsProvider>
                 <PrefsCloudSync />
+                <UlohySoftNav />
                 <SiteHeader />
                 {children}
               </ReviewPrefsProvider>

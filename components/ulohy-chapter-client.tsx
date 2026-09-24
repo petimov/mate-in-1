@@ -1,7 +1,5 @@
 "use client";
 
-import { Suspense } from "react";
-
 import { ChapterCatalog } from "@/components/chapter-catalog";
 import { PuzzleTrainer } from "@/components/puzzle-trainer";
 import {
@@ -20,7 +18,7 @@ export function UlohyChapterClient({
   chapterSlug?: string[];
 }) {
   const { curriculum, puzzles, error, loading } = useUlohyData();
-  if (loading) return <div className="min-h-0 flex-1 bg-background" />;
+  if (loading) return null;
   if (error || !curriculum || !puzzles) {
     return (
       <p className="p-6 text-sm text-red-500">{error || "Úlohy nejsou."}</p>
@@ -49,12 +47,12 @@ export function UlohyChapterClient({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-      <Suspense fallback={<div className="flex-1 bg-background" />}>
-        <PuzzleTrainer
-          initialCurriculum={curriculum}
-          initialPuzzles={puzzles}
-        />
-      </Suspense>
+      <PuzzleTrainer
+        initialCurriculum={curriculum}
+        initialPuzzles={puzzles}
+        courseSlug={courseSlug}
+        chapterSlug={slugs}
+      />
     </div>
   );
 }
