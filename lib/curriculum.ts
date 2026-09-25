@@ -8,6 +8,7 @@ export type CurriculumCourse = {
 };
 
 export type ChapterKind = "vyklad" | "cviceni";
+export type ChapterSide = "white" | "black";
 
 export type Chapter = {
   id: string;
@@ -17,6 +18,7 @@ export type Chapter = {
   title: string;
   sort: number;
   kind?: ChapterKind;
+  side?: ChapterSide;
 };
 
 export type Curriculum = {
@@ -366,6 +368,7 @@ export function parseCurriculum(raw: unknown): Curriculum | null {
     if (!id || !courseId || !title) continue;
     const parentRaw = chapter.parentId ?? chapter.parent_id;
     const kindRaw = String(chapter.kind ?? "").trim();
+    const side = parseChapterSide(chapter.side);
     chapters.push({
       id,
       courseId,
@@ -374,6 +377,7 @@ export function parseCurriculum(raw: unknown): Curriculum | null {
       title,
       sort: Number(chapter.sort) || 0,
       kind: kindRaw === "cviceni" ? "cviceni" : "vyklad",
+      ...(side ? { side } : {}),
     });
   }
   if (courses.length === 0) return null;
@@ -388,6 +392,35 @@ export function chapterKindOf(
 
 export function nextChapterKind(kind?: ChapterKind): ChapterKind {
   return kind === "cviceni" ? "vyklad" : "cviceni";
+}
+
+export function parseChapterSide(value: unknown): ChapterSide | undefined {
+  return value === "black" || value === "white" ? value : undefined;
+}
+
+export function nextChapterSide(side?: ChapterSide): ChapterSide | undefined {
+  if (side === "white") return "black";
+  if (side === "black") return undefined;
+  return "white";
+}
+
+export function chapterSideOf(
+  chapters: Chapter[],
+  chapterId?: string | null,
+): ChapterSide | undefined {
+  if (!chapterId) return undefined;
+  const chain = chapterChain(chapters, chapterId);
+  for (let i = chain.length - 1; i >= 0; i -= 1) {
+    const side = chain[i]?.side;
+    if (side === "white" || side === "black") return side;
+  }
+  return undefined;
+}
+
+export function chapterSideLabel(side?: ChapterSide): string {
+  if (side === "black") return "Černá";
+  if (side === "white") return "Bílá";
+  return "Barva";
 }
 
 export function emptyPlacement(): PuzzlePlacement {

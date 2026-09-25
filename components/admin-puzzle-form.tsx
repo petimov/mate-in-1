@@ -243,7 +243,7 @@ export function AdminPuzzleForm() {
   }
 
   return (
-    <div className="mx-auto grid w-full max-w-[90rem] gap-6">
+    <div className="mx-auto grid w-full max-w-[110rem] gap-6">
       <PgnImportCard
         onImported={refresh}
         curriculum={curriculum}
@@ -258,7 +258,7 @@ export function AdminPuzzleForm() {
           );
         }}
       />
-      <div className="grid items-start gap-6 xl:grid-cols-[minmax(18rem,24rem)_minmax(0,1fr)]">
+      <div className="grid items-start gap-6 xl:grid-cols-2">
         <Card className="bg-card xl:sticky xl:top-4">
           <CardHeader>
             <CardTitle>Kapitoly</CardTitle>
@@ -313,9 +313,21 @@ export function AdminPuzzleForm() {
           <CardContent className="pt-6">
             <form
               id="puzzle-form"
-              className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_min(100%,16rem)]"
+              className="grid gap-6"
               onSubmit={onSave}
             >
+              <div className="max-w-64">
+                <p className="mb-2 text-sm font-medium">Náhled</p>
+                <FenPreviewBoard
+                  fen={form.fen}
+                  selectedSquares={
+                    form.kind === "squares" ? parseSquares(form.squares) : []
+                  }
+                  onToggleSquare={
+                    form.kind === "squares" ? toggleSquare : undefined
+                  }
+                />
+              </div>
               <div className="grid gap-4">
               <Field label="Kapitola" htmlFor="chapter">
                 <select
@@ -570,18 +582,6 @@ export function AdminPuzzleForm() {
                   onChange={(e) => setForm({ ...form, videoUrl: e.target.value })}
                 />
               </Field>
-              </div>
-              <div className="lg:sticky lg:top-24">
-                <p className="mb-2 text-sm font-medium">Náhled</p>
-                <FenPreviewBoard
-                  fen={form.fen}
-                  selectedSquares={
-                    form.kind === "squares" ? parseSquares(form.squares) : []
-                  }
-                  onToggleSquare={
-                    form.kind === "squares" ? toggleSquare : undefined
-                  }
-                />
               </div>
             </form>
           </CardContent>

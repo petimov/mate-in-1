@@ -24,7 +24,10 @@ import {
   sortPuzzles,
   puzzlesInChapter,
   nextChapterKind,
+  nextChapterSide,
   chapterKindOf,
+  chapterSideOf,
+  chapterSideLabel,
   CH_MAT,
   CH_MAT_VEZI,
   CH_MAT_STRELCEM,
@@ -202,6 +205,20 @@ export function CurriculumTree({
     );
   }
 
+  function cycleSide(chapter: Chapter) {
+    setChapters(
+      curriculum.chapters.map((item) => {
+        if (item.id !== chapter.id) return item;
+        const side = nextChapterSide(item.side);
+        if (!side) {
+          const { side: _drop, ...rest } = item;
+          return rest;
+        }
+        return { ...item, side };
+      }),
+    );
+  }
+
   function deleteChapter(chapter: Chapter) {
     const ids = new Set<string>();
     const walk = (id: string) => {
@@ -372,12 +389,14 @@ export function CurriculumTree({
             onMove={moveChapter}
             onAddSub={addChapter}
             onCycleKind={cycleKind}
+            onCycleSide={cycleSide}
             onDropChapter={onDropChapter}
             onDropBefore={onDropBefore}
             onMovePuzzleDir={movePuzzleDir}
             dropChapterId={dropChapterId}
             setDropChapterId={setDropChapterId}
             onNewPuzzle={onNewPuzzle}
+            depth={0}
           />
         ))}
       </div>
@@ -416,12 +435,14 @@ function ChapterNode({
   onMove,
   onAddSub,
   onCycleKind,
+  onCycleSide,
   onDropChapter,
   onDropBefore,
   onMovePuzzleDir,
   dropChapterId,
   setDropChapterId,
   onNewPuzzle,
+  depth,
 }: {
   chapter: Chapter;
   chapters: Chapter[];
@@ -441,12 +462,14 @@ function ChapterNode({
   onMove: (chapter: Chapter, dir: -1 | 1) => void;
   onAddSub: (parentId: string) => void;
   onCycleKind: (chapter: Chapter) => void;
+  onCycleSide: (chapter: Chapter) => void;
   onDropChapter: (event: DragEvent, chapterId: string | null) => void;
   onDropBefore: (event: DragEvent, puzzle: Puzzle) => void;
   onMovePuzzleDir: (puzzle: Puzzle, dir: -1 | 1) => void;
   dropChapterId: string | null;
   setDropChapterId: (id: string | null) => void;
   onNewPuzzle: (chapterId: string) => void;
+  depth: number;
 }) {
   const kids = childChapters(chapters, chapter.id);
   const items = puzzlesInChapter(puzzles, chapter.id, false, chapters);
@@ -473,89 +496,108 @@ function ChapterNode({
     >
       <div
         className={cn(
-          "flex items-center gap-1 rounded-md px-1 py-1",
+          "grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 rounded-md px-1 py-1",
           selectedChapterId === chapter.id ? "bg-[#81b64c]/15" : "hover:bg-foreground/5",
           dropChapterId === chapter.id && "ring-2 ring-[#81b64c] bg-[#81b64c]/20",
         )}
       >
-        <button
-          type="button"
-          className="text-muted-foreground"
-          onClick={() =>
-            setOpen((current) => ({ ...current, [chapter.id]: !expanded }))
-          }
+        <div
+          className="flex min-w-0 items-center gap-1"
+          style={{ paddingLeft: depth * 16 }}
         >
-          {expanded ? (
-            <ChevronDown className="size-3.5" />
-          ) : (
-            <ChevronRight className="size-3.5" />
-          )}
-        </button>
-        {renameId === chapter.id ? (
-          <Input
-            value={renameValue}
-            className="h-7 text-sm"
-            autoFocus
-            onChange={(event) => setRenameValue(event.target.value)}
-            onBlur={() => onRename(chapter)}
-            onKeyDown={(event) => {
-              if (event.key === "Enter") onRename(chapter);
-              if (event.key === "Escape") setRenameId(null);
-            }}
-          />
-        ) : (
           <button
             type="button"
-            className="min-w-0 flex-1 truncate text-left text-sm"
-            onClick={() => onSelectChapter(chapter.id)}
+            className="shrink-0 text-muted-foreground"
+            onClick={() =>
+              setOpen((current) => ({ ...current, [chapter.id]: !expanded }))
+            }
           >
-            {chapter.title}
-            <span className="ml-2 text-[10px] text-muted-foreground">{items.length}</span>
+            {expanded ? (
+              <ChevronDown className="size-3.5" />
+            ) : (
+              <ChevronRight className="size-3.5" />
+            )}
           </button>
-        )}
-        <button
-          type="button"
-          title="Druh kapitoly"
-          className="shrink-0 rounded px-1.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground hover:bg-foreground/10 hover:text-foreground"
-          onClick={() => onCycleKind(chapter)}
-        >
-          {chapterKindOf(chapter) === "cviceni" ? "Cvičení" : "Výklad"}
-        </button>
-        {selectedChapterId === chapter.id ? (
-          <Button
+          {renameId === chapter.id ? (
+            <Input
+              value={renameValue}
+              className="h-7 min-w-0 flex-1 text-sm"
+              autoFocus
+              onChange={(event) => setRenameValue(event.target.value)}
+              onBlur={() => onRename(chapter)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") onRename(chapter);
+                if (event.key === "Escape") setRenameId(null);
+              }}
+            />
+          ) : (
+            <button
+              type="button"
+              className="min-w-0 flex-1 text-left text-sm"
+              onClick={() => onSelectChapter(chapter.id)}
+            >
+              {chapter.title}
+              <span className="ml-2 text-[10px] text-muted-foreground">
+                {items.length}
+              </span>
+            </button>
+          )}
+        </div>
+        <div className="flex shrink-0 items-center gap-0.5">
+          <button
             type="button"
-            variant="outline"
-            size="sm"
-            className="h-7 shrink-0 px-2"
-            onClick={() => onNewPuzzle(chapter.id)}
+            title="Druh kapitoly"
+            className="w-14 shrink-0 rounded px-1 text-center text-[10px] font-semibold uppercase tracking-wide text-muted-foreground hover:bg-foreground/10 hover:text-foreground"
+            onClick={() => onCycleKind(chapter)}
           >
-            Nová
-          </Button>
-        ) : null}
-        <IconBtn title="Nahoru" onClick={() => onMove(chapter, -1)}>
-          <ChevronsUp className="size-3.5" />
-        </IconBtn>
-        <IconBtn title="Dolů" onClick={() => onMove(chapter, 1)}>
-          <ChevronsDown className="size-3.5" />
-        </IconBtn>
-        <IconBtn
-          title="Přejmenovat"
-          onClick={() => {
-            setRenameId(chapter.id);
-            setRenameValue(chapter.title);
-          }}
-        >
-          <Pencil className="size-3.5" />
-        </IconBtn>
-        <IconBtn title="Podkapitola" onClick={() => onAddSub(chapter.id)}>
-          <Plus className="size-3.5" />
-        </IconBtn>
-        <IconBtn title="Smazat" onClick={() => onDelete(chapter)}>
-          <Trash2 className="size-3.5" />
-        </IconBtn>
+            {chapterKindOf(chapter) === "cviceni" ? "Cvičení" : "Výklad"}
+          </button>
+          <button
+            type="button"
+            title="Barva úloh v kapitole"
+            className="w-12 shrink-0 rounded px-1 text-center text-[10px] font-semibold uppercase tracking-wide text-muted-foreground hover:bg-foreground/10 hover:text-foreground"
+            onClick={() => onCycleSide(chapter)}
+          >
+            {chapterSideLabel(chapter.side ?? chapterSideOf(chapters, chapter.id))}
+          </button>
+          <div className="flex w-12 justify-center">
+            {selectedChapterId === chapter.id ? (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-6 px-1.5 text-[10px]"
+                onClick={() => onNewPuzzle(chapter.id)}
+              >
+                Nová
+              </Button>
+            ) : null}
+          </div>
+          <IconBtn title="Nahoru" onClick={() => onMove(chapter, -1)}>
+            <ChevronsUp className="size-3.5" />
+          </IconBtn>
+          <IconBtn title="Dolů" onClick={() => onMove(chapter, 1)}>
+            <ChevronsDown className="size-3.5" />
+          </IconBtn>
+          <IconBtn
+            title="Přejmenovat"
+            onClick={() => {
+              setRenameId(chapter.id);
+              setRenameValue(chapter.title);
+            }}
+          >
+            <Pencil className="size-3.5" />
+          </IconBtn>
+          <IconBtn title="Podkapitola" onClick={() => onAddSub(chapter.id)}>
+            <Plus className="size-3.5" />
+          </IconBtn>
+          <IconBtn title="Smazat" onClick={() => onDelete(chapter)}>
+            <Trash2 className="size-3.5" />
+          </IconBtn>
+        </div>
       </div>
       {expanded ? (
-        <div className="ml-4 border-l border-white/10 pl-2">
+        <div>
           {kids.map((child) => (
             <ChapterNode
               key={child.id}
@@ -577,12 +619,14 @@ function ChapterNode({
               onMove={onMove}
               onAddSub={onAddSub}
               onCycleKind={onCycleKind}
+              onCycleSide={onCycleSide}
               onDropChapter={onDropChapter}
               onDropBefore={onDropBefore}
               onMovePuzzleDir={onMovePuzzleDir}
               dropChapterId={dropChapterId}
               setDropChapterId={setDropChapterId}
               onNewPuzzle={onNewPuzzle}
+              depth={depth + 1}
             />
           ))}
           {items.map((puzzle) => (
@@ -593,6 +637,7 @@ function ChapterNode({
               onSelect={onSelectPuzzle}
               onDropBefore={onDropBefore}
               onMoveDir={onMovePuzzleDir}
+              depth={depth + 1}
             />
           ))}
         </div>
@@ -607,12 +652,14 @@ function PuzzleRow({
   onSelect,
   onDropBefore,
   onMoveDir,
+  depth,
 }: {
   puzzle: Puzzle;
   active: boolean;
   onSelect: (puzzle: Puzzle) => void;
   onDropBefore: (event: DragEvent, puzzle: Puzzle) => void;
   onMoveDir: (puzzle: Puzzle, dir: -1 | 1) => void;
+  depth: number;
 }) {
   return (
     <div
@@ -635,27 +682,36 @@ function PuzzleRow({
         onDropBefore(event, puzzle);
       }}
       className={cn(
-        "mb-0.5 flex w-full items-center gap-1 rounded-md px-2 py-1.5 text-left text-sm",
+        "mb-0.5 grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-2 rounded-md px-1 py-1.5 text-left text-sm",
         active ? "bg-muted text-foreground" : "text-muted-foreground hover:bg-foreground/5 hover:text-foreground",
       )}
     >
-      <GripVertical className="size-3.5 shrink-0 text-muted-foreground" />
-      <button
-        type="button"
-        className="min-w-0 flex-1 truncate text-left"
-        onClick={() => onSelect(puzzle)}
+      <div
+        className="flex min-w-0 items-center gap-1"
+        style={{ paddingLeft: depth * 16 }}
       >
-        {puzzle.title}
-      </button>
-      <span className="text-[10px] uppercase text-muted-foreground">
-        {puzzleKind(puzzle) === "squares" ? "Pole" : "Tah"}
-      </span>
-      <IconBtn title="Nahoru" onClick={() => onMoveDir(puzzle, -1)}>
-        <ChevronsUp className="size-3.5" />
-      </IconBtn>
-      <IconBtn title="Dolů" onClick={() => onMoveDir(puzzle, 1)}>
-        <ChevronsDown className="size-3.5" />
-      </IconBtn>
+        <GripVertical className="size-3.5 shrink-0 text-muted-foreground" />
+        <button
+          type="button"
+          className="min-w-0 flex-1 truncate text-left"
+          onClick={() => onSelect(puzzle)}
+        >
+          {puzzle.title}
+        </button>
+      </div>
+      <div className="flex shrink-0 items-center gap-0.5">
+        <span className="w-14 text-center text-[10px] uppercase text-muted-foreground">
+          {puzzleKind(puzzle) === "squares" ? "Pole" : "Tah"}
+        </span>
+        <span className="w-12" />
+        <span className="w-12" />
+        <IconBtn title="Nahoru" onClick={() => onMoveDir(puzzle, -1)}>
+          <ChevronsUp className="size-3.5" />
+        </IconBtn>
+        <IconBtn title="Dolů" onClick={() => onMoveDir(puzzle, 1)}>
+          <ChevronsDown className="size-3.5" />
+        </IconBtn>
+      </div>
     </div>
   );
 }
