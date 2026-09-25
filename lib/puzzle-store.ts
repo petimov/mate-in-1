@@ -106,15 +106,22 @@ export async function savePuzzleRow(
   return { data: null, error: { message: "Úlohu nešlo uložit." } };
 }
 
-export async function existingPuzzleKeys(supabase: SupabaseClient) {
-  const { data, error } = await supabase.from("puzzles").select("fen,moves");
-  if (error || !data) return new Set<string>();
-  return new Set(
-    data.map((row) =>
-      [
-        row.fen,
-        ((row.moves as string[] | null) ?? [])[0] ?? "",
-      ].join("|"),
-    ),
-  );
+export function puzzleKey(fen: string, move?: string | null) {
+  return `${fen.trim()}|${move ?? ""}`;
+}
+
+export async function existingPuzzleIndex(supabase: SupabaseClient) {
+  const { data, error } = await supabase
+    .from("puzzles")
+    .select("id,fen,moves,chapter_id");
+  const map = new Map<string, { id: string; chapterId: string | null }>();
+  if (error || !data) return map;
+  for (const row of data) {
+    const move = ((row.moves as string[] | null) ?? [])[0] ?? "";
+    map.set(puzzleKey(row.fen as string, move), {
+      id: row.id as string,
+      chapterId: (row.chapter_id as string | null) ?? null,
+    });
+  }
+  return map;
 }

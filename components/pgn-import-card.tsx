@@ -1,20 +1,48 @@
 "use client";
 
-import { useCallback, useRef, useState, type ChangeEvent, type DragEvent } from "react";
+import {
+  useCallback,
+  useRef,
+  useState,
+  type ChangeEvent,
+  type DragEvent,
+  type ReactNode,
+} from "react";
 import { Upload } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { parsePgnText, type PgnParseResult } from "@/lib/pgn-import";
+import {
+  childChapters,
+  sortChapters,
+  sortCourses,
+  type Curriculum,
+} from "@/lib/curriculum";
+import { decodePgnBytes, parsePgnText, type PgnParseResult } from "@/lib/pgn-import";
+import type { Puzzle } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 type PgnImportCardProps = {
   onImported: () => Promise<void> | void;
+  curriculum: Curriculum;
+  puzzles: Puzzle[];
+  courseId: string;
   chapterId?: string | null;
+  onSelectCourse: (id: string) => void;
+  onSelectChapter: (id: string | null) => void;
 };
 
-export function PgnImportCard({ onImported, chapterId }: PgnImportCardProps) {
+export function PgnImportCard({
+  onImported,
+  curriculum,
+  puzzles,
+  courseId,
+  chapterId,
+  onSelectCourse,
+  onSelectChapter,
+}: PgnImportCardProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [dragOver, setDragOver] = useState(false);
   const [pasteMode, setPasteMode] = useState(false);
@@ -39,14 +67,29 @@ export function PgnImportCard({ onImported, chapterId }: PgnImportCardProps) {
 
   const readFiles = useCallback(
     async (list: FileList | File[]) => {
-      const pgnFiles = Array.from(list).filter((file) =>
-        /\.(pgn|txt)$/i.test(file.name) || file.type.startsWith("text/"),
-      );
-      if (pgnFiles.length === 0) {
-        setStatus("Drop .pgn files.");
+      const files = Array.from(list);
+      if (files.some((file) => /\.(cbv|cbh|cbf|cbj)$/i.test(file.name))) {
+        setStatus("ChessBase databáze ne. V ChessBase: Soubor → Exportovat → PGN.");
         return;
       }
-      const chunks = await Promise.all(pgnFiles.map((file) => file.text()));
+      const pgnFiles = files.filter(
+        (file) =>
+          /\.(pgn|txt)$/i.test(file.name) ||
+          !file.type ||
+          file.type === "application/octet-stream" ||
+          file.type.includes("pgn") ||
+          file.type.includes("chess") ||
+          file.type.startsWith("text/"),
+      );
+      if (pgnFiles.length === 0) {
+        setStatus("Dej sem .pgn z ChessBase exportu.");
+        return;
+      }
+      const chunks = await Promise.all(
+        pgnFiles.map(async (file) =>
+          decodePgnBytes(new Uint8Array(await file.arrayBuffer())),
+        ),
+      );
       applyText(chunks.join("\n\n"), pgnFiles.map((file) => file.name));
     },
     [applyText],
@@ -57,6 +100,11 @@ export function PgnImportCard({ onImported, chapterId }: PgnImportCardProps) {
     setDragOver(false);
     if (event.dataTransfer.files.length) {
       void readFiles(event.dataTransfer.files);
+      return;
+    }
+    const text = event.dataTransfer.getData("text/plain");
+    if (text.trim()) {
+      applyText(text, ["chessbase.pgn"]);
     }
   }
 
@@ -79,13 +127,14 @@ export function PgnImportCard({ onImported, chapterId }: PgnImportCardProps) {
         puzzles: parsed.puzzles.map((puzzle, index) => ({
           ...puzzle,
           chapterId: chapterId || undefined,
-          sort: index,
+          sort: nextSortInChapter(puzzles, chapterId) + index,
         })),
       }),
     });
     const data = (await res.json()) as {
       error?: string;
       imported?: number;
+      moved?: number;
       duplicates?: number;
       invalid?: { title: string; error: string }[];
     };
@@ -96,9 +145,10 @@ export function PgnImportCard({ onImported, chapterId }: PgnImportCardProps) {
       return;
     }
 
-    const bits = [`Imported ${data.imported ?? 0}`];
-    if (data.duplicates) bits.push(`${data.duplicates} already existed`);
-    if (data.invalid?.length) bits.push(`${data.invalid.length} invalid`);
+    const bits = [`Importováno ${data.imported ?? 0}`];
+    if (data.moved) bits.push(`${data.moved} přesunuto do kapitoly`);
+    if (data.duplicates) bits.push(`${data.duplicates} už tam bylo`);
+    if (data.invalid?.length) bits.push(`${data.invalid.length} neplatných`);
     setStatus(`${bits.join(". ")}.`);
     setParsed(null);
     setFiles([]);
@@ -125,6 +175,13 @@ export function PgnImportCard({ onImported, chapterId }: PgnImportCardProps) {
         </Button>
       </CardHeader>
       <CardContent className="space-y-4">
+        <ImportTarget
+          curriculum={curriculum}
+          courseId={courseId}
+          chapterId={chapterId ?? null}
+          onSelectCourse={onSelectCourse}
+          onSelectChapter={onSelectChapter}
+        />
         <input
           ref={inputRef}
           type="file"
@@ -208,4 +265,145 @@ export function PgnImportCard({ onImported, chapterId }: PgnImportCardProps) {
       </CardContent>
     </Card>
   );
+}
+
+function nextSortInChapter(puzzles: Puzzle[], chapterId?: string | null) {
+  const sorts = puzzles
+    .filter((puzzle) => (puzzle.chapterId ?? null) === (chapterId ?? null))
+    .map((puzzle) => puzzle.sort ?? 0);
+  return sorts.length ? Math.max(...sorts) + 1 : 0;
+}
+
+function ImportTarget({
+  curriculum,
+  courseId,
+  chapterId,
+  onSelectCourse,
+  onSelectChapter,
+}: {
+  curriculum: Curriculum;
+  courseId: string;
+  chapterId: string | null;
+  onSelectCourse: (id: string) => void;
+  onSelectChapter: (id: string | null) => void;
+}) {
+  const courses = sortCourses(curriculum.courses);
+  const course = courses.find((item) => item.id === courseId) ?? courses[0];
+  const roots = course
+    ? childChapters(curriculum.chapters, null, course.id)
+    : [];
+  const selected = curriculum.chapters.find((item) => item.id === chapterId);
+  const rootId = selected
+    ? rootChapterId(curriculum, selected.id, course?.id ?? "")
+    : "";
+  const subs = rootId
+    ? descendantOptions(curriculum, rootId, course?.id ?? "")
+    : [];
+  const subId = chapterId && chapterId !== rootId ? chapterId : "";
+
+  return (
+    <div className="grid gap-3 sm:grid-cols-3">
+      <Field label="Kurz" htmlFor="import-course">
+        <select
+          id="import-course"
+          className="h-9 w-full rounded-md border border-border bg-background px-3 text-sm"
+          value={course?.id ?? ""}
+          onChange={(event) => {
+            onSelectCourse(event.target.value);
+            onSelectChapter(null);
+          }}
+        >
+          {courses.map((item) => (
+            <option key={item.id} value={item.id}>
+              {item.title}
+            </option>
+          ))}
+        </select>
+      </Field>
+      <Field label="Kapitola" htmlFor="import-chapter">
+        <select
+          id="import-chapter"
+          className="h-9 w-full rounded-md border border-border bg-background px-3 text-sm"
+          value={rootId}
+          onChange={(event) => onSelectChapter(event.target.value || null)}
+        >
+          <option value="">Nezařazené</option>
+          {roots.map((item) => (
+            <option key={item.id} value={item.id}>
+              {item.title}
+            </option>
+          ))}
+        </select>
+      </Field>
+      <Field label="Podkapitola" htmlFor="import-sub">
+        <select
+          id="import-sub"
+          className="h-9 w-full rounded-md border border-border bg-background px-3 text-sm"
+          value={subId}
+          disabled={!rootId || subs.length === 0}
+          onChange={(event) =>
+            onSelectChapter(event.target.value || rootId || null)
+          }
+        >
+          <option value="">{rootId ? "Celá kapitola" : "—"}</option>
+          {subs.map((item) => (
+            <option key={item.id} value={item.id}>
+              {item.label}
+            </option>
+          ))}
+        </select>
+      </Field>
+    </div>
+  );
+}
+
+function Field({
+  label,
+  htmlFor,
+  children,
+}: {
+  label: string;
+  htmlFor: string;
+  children: ReactNode;
+}) {
+  return (
+    <div className="grid gap-1.5">
+      <Label htmlFor={htmlFor}>{label}</Label>
+      {children}
+    </div>
+  );
+}
+
+function rootChapterId(
+  curriculum: Curriculum,
+  chapterId: string,
+  courseId: string,
+): string {
+  let current = curriculum.chapters.find((item) => item.id === chapterId);
+  while (current?.parentId) {
+    const parent = curriculum.chapters.find((item) => item.id === current?.parentId);
+    if (!parent || parent.courseId !== courseId) break;
+    current = parent;
+  }
+  return current?.courseId === courseId ? current.id : "";
+}
+
+function descendantOptions(
+  curriculum: Curriculum,
+  parentId: string,
+  courseId: string,
+) {
+  const chapters = sortChapters(
+    curriculum.chapters.filter((chapter) => chapter.courseId === courseId),
+  );
+  const options: { id: string; label: string }[] = [];
+  const walk = (id: string, prefix: string) => {
+    for (const chapter of childChapters(chapters, id, courseId)) {
+      const label = prefix ? `${prefix} / ${chapter.title}` : chapter.title;
+      options.push({ id: chapter.id, label });
+      walk(chapter.id, label);
+    }
+  };
+  walk(parentId, "");
+  return options;
 }

@@ -1034,16 +1034,34 @@ a.home-card:hover h3 {
 }
 
 .cg-board-host cg-board square.markup-green {
-  background-color: rgba(21, 120, 27, 0.55);
+  background-color: rgba(61, 154, 74, 0.5);
 }
 .cg-board-host cg-board square.markup-red {
-  background-color: rgba(136, 32, 32, 0.55);
+  background-color: rgba(217, 74, 74, 0.5);
 }
 .cg-board-host cg-board square.markup-yellow {
-  background-color: rgba(230, 143, 0, 0.5);
+  background-color: rgba(230, 180, 34, 0.48);
 }
 .cg-board-host cg-board square.markup-blue {
-  background-color: rgba(0, 48, 136, 0.45);
+  background-color: rgba(79, 138, 216, 0.48);
+}
+.cg-board-host cg-board square.markup-teal {
+  background-color: rgba(43, 181, 160, 0.48);
+}
+.cg-board-host cg-board square.markup-violet {
+  background-color: rgba(139, 111, 212, 0.48);
+}
+.cg-board-host cg-board square.markup-rose {
+  background-color: rgba(232, 107, 138, 0.48);
+}
+.cg-board-host cg-board square.markup-orange {
+  background-color: rgba(239, 125, 59, 0.48);
+}
+.cg-board-host cg-board square.markup-sky {
+  background-color: rgba(94, 196, 224, 0.48);
+}
+.cg-board-host cg-board square.markup-olive {
+  background-color: rgba(143, 176, 62, 0.48);
 }
 
 .cg-board-host piece {

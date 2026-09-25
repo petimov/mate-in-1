@@ -1,4 +1,15 @@
-export const BRUSHES = ["green", "red", "yellow", "blue"] as const;
+export const BRUSHES = [
+  "green",
+  "red",
+  "yellow",
+  "blue",
+  "teal",
+  "violet",
+  "rose",
+  "orange",
+  "sky",
+  "olive",
+] as const;
 export type Brush = (typeof BRUSHES)[number];
 
 export type MarkupArrow = {
@@ -21,18 +32,38 @@ export type PuzzleMarkup = {
 export type MarkupTool = "color" | "circle" | "arrow";
 export type MarkupPhase = "before" | "after";
 
+function hexRgba(hex: string, alpha: number): string {
+  const n = hex.replace("#", "");
+  const r = Number.parseInt(n.slice(0, 2), 16);
+  const g = Number.parseInt(n.slice(2, 4), 16);
+  const b = Number.parseInt(n.slice(4, 6), 16);
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
 export const BRUSH_HEX: Record<Brush, string> = {
-  green: "#15781B",
-  red: "#882020",
-  yellow: "#e68f00",
-  blue: "#003088",
+  green: "#3d9a4a",
+  red: "#d94a4a",
+  yellow: "#e6b422",
+  blue: "#4f8ad8",
+  teal: "#2bb5a0",
+  violet: "#8b6fd4",
+  rose: "#e86b8a",
+  orange: "#ef7d3b",
+  sky: "#5ec4e0",
+  olive: "#8fb03e",
 };
 
 export const BRUSH_FILL: Record<Brush, string> = {
-  green: "rgba(21, 120, 27, 0.55)",
-  red: "rgba(136, 32, 32, 0.55)",
-  yellow: "rgba(230, 143, 0, 0.5)",
-  blue: "rgba(0, 48, 136, 0.45)",
+  green: hexRgba(BRUSH_HEX.green, 0.5),
+  red: hexRgba(BRUSH_HEX.red, 0.5),
+  yellow: hexRgba(BRUSH_HEX.yellow, 0.48),
+  blue: hexRgba(BRUSH_HEX.blue, 0.48),
+  teal: hexRgba(BRUSH_HEX.teal, 0.48),
+  violet: hexRgba(BRUSH_HEX.violet, 0.48),
+  rose: hexRgba(BRUSH_HEX.rose, 0.48),
+  orange: hexRgba(BRUSH_HEX.orange, 0.48),
+  sky: hexRgba(BRUSH_HEX.sky, 0.48),
+  olive: hexRgba(BRUSH_HEX.olive, 0.48),
 };
 
 export const BRUSH_LABEL: Record<Brush, string> = {
@@ -40,7 +71,42 @@ export const BRUSH_LABEL: Record<Brush, string> = {
   red: "Červená",
   yellow: "Žlutá",
   blue: "Modrá",
+  teal: "Tyrkys",
+  violet: "Fialová",
+  rose: "Růžová",
+  orange: "Oranžová",
+  sky: "Nebesky",
+  olive: "Olivová",
 };
+
+export const MARKUP_ARROW_OPTIONS = {
+  colors: {
+    default: BRUSH_HEX.yellow,
+    shift: BRUSH_HEX.green,
+    ctrl: BRUSH_HEX.red,
+    alt: BRUSH_HEX.blue,
+    meta: BRUSH_HEX.violet,
+  },
+  color: BRUSH_HEX.yellow,
+  secondaryColor: BRUSH_HEX.green,
+  tertiaryColor: BRUSH_HEX.red,
+  arrowLengthReducerDenominator: 10,
+  sameTargetArrowLengthReducerDenominator: 6,
+  arrowWidthDenominator: 11,
+  activeArrowWidthMultiplier: 0.9,
+  opacity: 0.82,
+  activeOpacity: 0.55,
+  arrowStartOffset: 0.34,
+};
+
+export function chessgroundBrushes() {
+  return Object.fromEntries(
+    BRUSHES.map((id) => [
+      id,
+      { key: id, color: BRUSH_HEX[id], opacity: 0.88, lineWidth: 5.5 },
+    ]),
+  );
+}
 
 const WSM = /\n?<!--wsm:([\s\S]*?)-->/;
 const SQUARE = /^[a-h][1-8]$/;
@@ -99,13 +165,23 @@ export function visibleMarkup(
 }
 
 export function toChessgroundShapes(markup?: BoardMarkup | null) {
-  const shapes: { orig: string; dest?: string; brush: string }[] = [];
+  const shapes: {
+    orig: string;
+    dest?: string;
+    brush: string;
+    modifiers?: { lineWidth: number };
+  }[] = [];
   if (!markup) return shapes;
   for (const [square, brush] of Object.entries(markup.circles)) {
     shapes.push({ orig: square, brush });
   }
   for (const arrow of markup.arrows) {
-    shapes.push({ orig: arrow.from, dest: arrow.to, brush: arrow.color });
+    shapes.push({
+      orig: arrow.from,
+      dest: arrow.to,
+      brush: arrow.color,
+      modifiers: { lineWidth: 5.5 },
+    });
   }
   return shapes;
 }
@@ -114,7 +190,7 @@ export function toChessboardArrows(markup?: BoardMarkup | null) {
   return (markup?.arrows ?? []).map((arrow) => ({
     startSquare: arrow.from,
     endSquare: arrow.to,
-    color: BRUSH_HEX[arrow.color],
+    color: BRUSH_HEX[arrow.color] ?? BRUSH_HEX.green,
   }));
 }
 

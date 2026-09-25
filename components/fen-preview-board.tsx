@@ -8,6 +8,7 @@ import { BoardFrame } from "@/components/board-frame";
 import { useBoardAppearance } from "@/components/board-appearance-provider";
 import { boardSquareStyles, mergeSquareStyles } from "@/lib/board-appearance";
 import { isValidFen } from "@/lib/chess";
+import { START_SETUP_FEN } from "@/lib/fen-setup";
 import { cn } from "@/lib/utils";
 
 const Chessboard = dynamic(
@@ -22,7 +23,6 @@ type FenPreviewBoardProps = {
   onToggleSquare?: (square: string) => void;
 };
 
-const START_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 const MARKED: CSSProperties = { backgroundColor: "rgba(212, 160, 23, 0.55)" };
 
 export function FenPreviewBoard({
@@ -32,7 +32,7 @@ export function FenPreviewBoard({
   onToggleSquare,
 }: FenPreviewBoardProps) {
   const valid = isValidFen(fen);
-  const position = valid ? fen : START_FEN;
+  const position = valid ? fen : START_SETUP_FEN;
   const { board, pieces } = useBoardAppearance();
 
   const squareStyles = useMemo(() => {
@@ -50,7 +50,7 @@ export function FenPreviewBoard({
 
   const options = useMemo(
     () => ({
-      id: `fen-preview-${position}`,
+      id: "fen-preview-board",
       position,
       pieces,
       allowDragging: false,
@@ -62,22 +62,16 @@ export function FenPreviewBoard({
       },
       ...boardSquareStyles(board),
     }),
-    [
-      board.dark,
-      board.light,
-      onSquareClick,
-      onToggleSquare,
-      pieces,
-      position,
-      squareStyles,
-    ],
+    [board, onSquareClick, onToggleSquare, pieces, position, squareStyles],
   );
 
   return (
     <div className={cn("space-y-2", className)}>
-      <BoardFrame className="aspect-square w-full">
-        <Chessboard key={`${position}-${board.id}`} options={options} />
-      </BoardFrame>
+      <div className="relative aspect-square w-full">
+        <BoardFrame className="absolute inset-0 h-full w-full">
+          <Chessboard key={`${board.id}-${position}`} options={options} />
+        </BoardFrame>
+      </div>
       {!valid ? (
         <p className="text-xs text-amber-400">Neplatný FEN — výchozí postavení.</p>
       ) : null}

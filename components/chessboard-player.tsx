@@ -30,7 +30,7 @@ import {
   orientationFromFen,
   pieceTypeAt,
 } from "@/lib/chess";
-import { toChessgroundShapes, type BoardMarkup } from "@/lib/markup";
+import { chessgroundBrushes, toChessgroundShapes, type BoardMarkup } from "@/lib/markup";
 import { cn } from "@/lib/utils";
 
 import "chessground/assets/chessground.base.css";
@@ -223,6 +223,7 @@ export const ChessboardPlayer = memo(function ChessboardPlayer({
         enabled: true,
         visible: true,
         defaultSnapToValidMove: false,
+        brushes: chessgroundBrushes(),
         autoShapes: shapes,
       },
     };

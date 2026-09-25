@@ -24,6 +24,7 @@ import {
 import { playBoardSound } from "@/lib/board-sound";
 import { orientationFromFen } from "@/lib/chess";
 import {
+  MARKUP_ARROW_OPTIONS,
   markupCircleColor,
   markupFillStyles,
   toChessboardArrows,
@@ -170,6 +171,7 @@ export const SquaresBoard = forwardRef<SquaresBoardHandle, SquaresBoardProps>(
         allowDragging: false,
         allowDrawingArrows: false,
         arrows: toChessboardArrows(markup),
+        arrowOptions: MARKUP_ARROW_OPTIONS,
         showAnimations: false,
         pieces,
         squareStyles,

@@ -7,6 +7,7 @@ import { FenPreviewBoard } from "@/components/fen-preview-board";
 import { MarkupEditor } from "@/components/markup-editor";
 import { PlayMoveDialog } from "@/components/play-move-dialog";
 import { PgnImportCard } from "@/components/pgn-import-card";
+import { PositionEditorDialog } from "@/components/position-editor-dialog";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -60,6 +61,7 @@ export function AdminPuzzleForm() {
     null,
   );
   const [boardOpen, setBoardOpen] = useState(false);
+  const [positionOpen, setPositionOpen] = useState(false);
 
   async function refresh() {
     const [puzzleRes, curRes] = await Promise.all([
@@ -242,7 +244,20 @@ export function AdminPuzzleForm() {
 
   return (
     <div className="mx-auto grid w-full max-w-[90rem] gap-6">
-      <PgnImportCard onImported={refresh} chapterId={selectedChapterId} />
+      <PgnImportCard
+        onImported={refresh}
+        curriculum={curriculum}
+        puzzles={puzzles}
+        courseId={courseId}
+        chapterId={selectedChapterId}
+        onSelectCourse={setCourseId}
+        onSelectChapter={(id) => {
+          setSelectedChapterId(id);
+          setForm((current) =>
+            current.id ? current : { ...current, chapterId: id },
+          );
+        }}
+      />
       <div className="grid items-start gap-6 xl:grid-cols-[minmax(18rem,24rem)_minmax(0,1fr)]">
         <Card className="bg-card xl:sticky xl:top-4">
           <CardHeader>
@@ -352,13 +367,21 @@ export function AdminPuzzleForm() {
                 </div>
               </div>
               <Field label="FEN" htmlFor="fen">
-                <div className="flex gap-2">
+                <div className="flex flex-wrap gap-2">
                   <Input
                     id="fen"
                     required
                     value={form.fen}
                     onChange={(e) => setForm({ ...form, fen: e.target.value })}
                   />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="shrink-0"
+                    onClick={() => setPositionOpen(true)}
+                  >
+                    Upravit pozici
+                  </Button>
                   <Button
                     type="button"
                     variant="outline"
@@ -564,6 +587,12 @@ export function AdminPuzzleForm() {
           </CardContent>
         </Card>
       </div>
+      <PositionEditorDialog
+        open={positionOpen}
+        fen={form.fen}
+        onClose={() => setPositionOpen(false)}
+        onChange={(next) => setForm((current) => ({ ...current, fen: next }))}
+      />
       <MarkupEditor
         open={boardOpen}
         onClose={() => setBoardOpen(false)}

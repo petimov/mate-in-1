@@ -21,9 +21,9 @@ import { fenAfterUci, isValidFen, normalizeUci, orientationFromFen } from "@/lib
 import { X } from "lucide-react";
 import {
   BRUSHES,
-  BRUSH_FILL,
   BRUSH_HEX,
   BRUSH_LABEL,
+  MARKUP_ARROW_OPTIONS,
   cloneBoardMarkup,
   emptyBoardMarkup,
   markupCircleColor,
@@ -273,6 +273,7 @@ export function MarkupEditor({
       showAnimations: true,
       animationDurationInMs: 220,
       arrows: boardMode === "markup" ? toChessboardArrows(layer) : [],
+      arrowOptions: MARKUP_ARROW_OPTIONS,
       squareStyles,
       squareRenderer,
       onSquareClick,
@@ -387,15 +388,15 @@ export function MarkupEditor({
                     </ModeButton>
                   ))}
                 </div>
-                <div className="flex flex-wrap items-center gap-2">
+                <div className="grid grid-cols-5 gap-1.5">
                   {BRUSHES.map((item) => (
                     <button
                       key={item}
                       type="button"
                       title={BRUSH_LABEL[item]}
                       className={cn(
-                        "size-7 rounded-full border-2",
-                        brush === item ? "border-white" : "border-transparent",
+                        "size-7 rounded-full border-2 shadow-sm",
+                        brush === item ? "border-foreground" : "border-transparent",
                       )}
                       style={{ backgroundColor: BRUSH_HEX[item] }}
                       onClick={() => setBrush(item)}
@@ -431,17 +432,6 @@ export function MarkupEditor({
                     Kopírovat před → po
                   </Button>
                 ) : null}
-                <div className="flex flex-col gap-1 text-[11px] text-muted-foreground">
-                  {BRUSHES.map((item) => (
-                    <span key={item} className="inline-flex items-center gap-1.5">
-                      <span
-                        className="size-2.5 rounded-sm"
-                        style={{ backgroundColor: BRUSH_FILL[item] }}
-                      />
-                      {BRUSH_LABEL[item]}
-                    </span>
-                  ))}
-                </div>
               </>
             ) : (
               <p className="text-xs text-muted-foreground">
