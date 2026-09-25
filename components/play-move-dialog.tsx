@@ -241,6 +241,7 @@ function PlayMoveBoard({
       onPieceClick: ({ square }: PieceHandlerArgs) => {
         if (square) handleSquare(square);
       },
+      ...boardSquareStyles(board),
       dropSquareStyle: {
         backgroundColor: "rgba(20, 85, 30, 0.22)",
       },
@@ -252,7 +253,6 @@ function PlayMoveBoard({
         width: "100%",
         overflow: "hidden" as const,
       },
-      ...boardSquareStyles(board),
     }),
     [
       board,
