@@ -99,13 +99,23 @@ export const MARKUP_ARROW_OPTIONS = {
   arrowStartOffset: 0.34,
 };
 
+function chessgroundBrush(id: Brush) {
+  return { key: id, color: BRUSH_HEX[id], opacity: 0.88, lineWidth: 5.5 };
+}
+
 export function chessgroundBrushes() {
-  return Object.fromEntries(
-    BRUSHES.map((id) => [
-      id,
-      { key: id, color: BRUSH_HEX[id], opacity: 0.88, lineWidth: 5.5 },
-    ]),
-  );
+  return {
+    green: chessgroundBrush("green"),
+    red: chessgroundBrush("red"),
+    blue: chessgroundBrush("blue"),
+    yellow: chessgroundBrush("yellow"),
+    teal: chessgroundBrush("teal"),
+    violet: chessgroundBrush("violet"),
+    rose: chessgroundBrush("rose"),
+    orange: chessgroundBrush("orange"),
+    sky: chessgroundBrush("sky"),
+    olive: chessgroundBrush("olive"),
+  };
 }
 
 const WSM = /\n?<!--wsm:([\s\S]*?)-->/;
