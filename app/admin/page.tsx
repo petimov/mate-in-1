@@ -9,8 +9,8 @@ export default async function AdminPage() {
   }
 
   return (
-    <main className="min-h-0 flex-1 overflow-y-auto px-4 py-8">
-      <h1 className="mx-auto mb-6 max-w-[110rem] text-2xl font-semibold tracking-tight">
+    <main className="px-4 py-3">
+      <h1 className="mx-auto mb-3 w-full max-w-[110rem] text-2xl font-semibold tracking-tight">
         Úlohy školy
       </h1>
       <AdminPuzzleForm />

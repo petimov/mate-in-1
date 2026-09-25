@@ -1108,6 +1108,12 @@ a.home-card:hover h3 {
   opacity: 0.70;
 }
 
+html.admin-theme,
+html.admin-theme body {
+  height: auto !important;
+  min-height: 100dvh;
+}
+
 @media print {
   html,
   body {

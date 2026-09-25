@@ -243,7 +243,8 @@ export function AdminPuzzleForm() {
   }
 
   return (
-    <div className="mx-auto grid w-full max-w-[110rem] gap-6">
+    <div className="mx-auto flex w-full max-w-[110rem] flex-col gap-3">
+      <div className="shrink-0">
       <PgnImportCard
         onImported={refresh}
         curriculum={curriculum}
@@ -258,8 +259,10 @@ export function AdminPuzzleForm() {
           );
         }}
       />
-      <div className="grid items-start gap-6 xl:grid-cols-2">
-        <Card className="bg-card xl:sticky xl:top-4">
+      </div>
+      <div className="flex flex-col gap-4 xl:flex-row">
+        <div className="h-[100vh] min-h-[100vh] min-w-0 flex-1 overflow-y-scroll">
+        <Card className="bg-card">
           <CardHeader>
             <CardTitle>Kapitoly</CardTitle>
             <p className="text-sm text-muted-foreground">
@@ -294,8 +297,10 @@ export function AdminPuzzleForm() {
             />
           </CardContent>
         </Card>
+        </div>
+        <div className="h-[100vh] min-h-[100vh] min-w-0 flex-1 overflow-y-scroll">
         <Card className="bg-card">
-          <CardHeader className="sticky top-0 z-10 border-b border-border/60 bg-card/95 backdrop-blur">
+          <CardHeader className="border-b border-border/60 bg-card">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="min-w-0">
                 <CardTitle>{form.id ? "Upravit úlohu" : "Nová úloha"}</CardTitle>
@@ -586,6 +591,7 @@ export function AdminPuzzleForm() {
             </form>
           </CardContent>
         </Card>
+        </div>
       </div>
       <PositionEditorDialog
         open={positionOpen}

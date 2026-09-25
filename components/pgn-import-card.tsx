@@ -162,7 +162,7 @@ export function PgnImportCard({
 
   return (
     <Card className="bg-card">
-      <CardHeader className="flex flex-row items-start justify-between gap-4">
+      <CardHeader className="flex flex-row items-start justify-between gap-4 p-4">
         <div>
           <CardTitle>Mass import</CardTitle>
           <CardDescription>
@@ -178,7 +178,7 @@ export function PgnImportCard({
           {pasteMode ? "Switch to files" : "Switch to copy & paste"}
         </Button>
       </CardHeader>
-      <CardContent className="space-y-4">
+      <CardContent className="space-y-3 p-4 pt-0">
         <ImportTarget
           curriculum={curriculum}
           courseId={courseId}
@@ -240,7 +240,7 @@ export function PgnImportCard({
         ) : (
           <div
             className={cn(
-              "flex min-h-44 cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed px-6 text-center transition-colors",
+              "flex min-h-24 cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed px-6 py-6 text-center transition-colors",
               dragOver
                 ? "border-primary bg-primary/10"
                 : "border-border bg-muted/40 hover:border-primary/60",
@@ -253,7 +253,7 @@ export function PgnImportCard({
             onDrop={onDrop}
             onClick={() => inputRef.current?.click()}
           >
-            <Upload className="mb-3 size-10 text-muted-foreground" strokeWidth={1.5} />
+            <Upload className="mb-2 size-6 text-muted-foreground" strokeWidth={1.5} />
             <p className="text-sm text-muted-foreground">
               Drop .pgn files here, or click to browse.
             </p>
