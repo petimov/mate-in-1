@@ -1,19 +1,17 @@
 "use client";
 
-import { useEffect, useState, type FormEvent, type ReactNode } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 
 import { CurriculumTree } from "@/components/curriculum-tree";
-import { FenPreviewBoard } from "@/components/fen-preview-board";
 import { MarkupEditor } from "@/components/markup-editor";
+import { MarkupPalette, type SetupTool } from "@/components/markup-palette";
 import { PlayMoveDialog } from "@/components/play-move-dialog";
 import { PgnImportCard } from "@/components/pgn-import-card";
-import { PositionEditorDialog } from "@/components/position-editor-dialog";
+import { PositionSetupBoard } from "@/components/position-setup-board";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { isValidFen, normalizeUci, startFenForLine } from "@/lib/chess";
+import { fenAfterUci, isValidFen, normalizeUci, startFenForLine } from "@/lib/chess";
 import {
   DEMO_CURRICULUM,
   bindPuzzlesToCurriculum,
@@ -23,7 +21,12 @@ import {
   withMateSubchapters,
   type Curriculum,
 } from "@/lib/curriculum";
-import { clonePuzzleMarkup, emptyPuzzleMarkup } from "@/lib/markup";
+import {
+  clonePuzzleMarkup,
+  emptyPuzzleMarkup,
+  type Brush,
+  type MarkupPhase,
+} from "@/lib/markup";
 import { isUuid, puzzleKind, puzzleToSaveBody } from "@/lib/puzzles";
 import { parseSquares } from "@/lib/squares";
 import type { Puzzle, PuzzleKind, WrongReply } from "@/lib/types";
@@ -60,8 +63,11 @@ export function AdminPuzzleForm() {
   const [playTarget, setPlayTarget] = useState<"solution" | number | null>(
     null,
   );
+  const reopenPlayRef = useRef<number | null>(null);
   const [boardOpen, setBoardOpen] = useState(false);
-  const [positionOpen, setPositionOpen] = useState(false);
+  const [markupTool, setMarkupTool] = useState<SetupTool>("arrow");
+  const [markupBrush, setMarkupBrush] = useState<Brush>("green");
+  const [markupPhase, setMarkupPhase] = useState<MarkupPhase>("before");
 
   async function refresh() {
     const [puzzleRes, curRes] = await Promise.all([
@@ -102,6 +108,38 @@ export function AdminPuzzleForm() {
       return;
     }
     setStatus(null);
+  }
+
+  async function onDeletePuzzles(ids: string[]) {
+    const unique = Array.from(new Set(ids.filter(isUuid)));
+    if (!unique.length) return;
+    const res = await fetch("/api/puzzles", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ids: unique }),
+    });
+    const data = (await res.json()) as { error?: string; deleted?: number };
+    if (!res.ok) {
+      setStatus(data.error ?? "Smazání selhalo.");
+      return;
+    }
+    const drop = new Set(unique);
+    setPuzzles((current) => current.filter((item) => !drop.has(item.id)));
+    if (form.id && drop.has(form.id)) {
+      setForm(emptyForm());
+    }
+    setStatus(`Smazáno ${data.deleted ?? unique.length}.`);
+  }
+
+  async function renamePuzzleTitle(puzzle: Puzzle, title: string) {
+    const next = { ...puzzle, title };
+    setPuzzles((current) =>
+      current.map((item) => (item.id === puzzle.id ? next : item)),
+    );
+    if (form.id === puzzle.id) {
+      setForm((current) => ({ ...current, title }));
+    }
+    await persistPuzzle(next, next.chapterId ?? null, next.sort ?? 0);
   }
 
   async function persistPuzzle(puzzle: Puzzle, chapterId: string | null, sort: number) {
@@ -156,6 +194,24 @@ export function AdminPuzzleForm() {
     void refresh();
   }, []);
 
+  useEffect(() => {
+    function onKey(event: KeyboardEvent) {
+      const target = event.target as HTMLElement | null;
+      if (target?.closest("input, textarea, select")) return;
+      if (playTarget !== null) return;
+      if (event.key === "ArrowLeft") {
+        event.preventDefault();
+        setMarkupPhase("before");
+      }
+      if (event.key === "ArrowRight") {
+        event.preventDefault();
+        setMarkupPhase("after");
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [playTarget]);
+
   function loadPuzzle(puzzle: Puzzle) {
     setForm({
       id: puzzle.id,
@@ -187,6 +243,25 @@ export function AdminPuzzleForm() {
     if (set.has(square)) set.delete(square);
     else set.add(square);
     setForm({ ...form, squares: [...set].join(" ") });
+  }
+
+  function addWrongGroup() {
+    const index = form.wrongReplies.length;
+    setForm({
+      ...form,
+      wrongReplies: [...form.wrongReplies, { answer: "", text: "" }],
+    });
+    if (form.kind === "move" && isValidFen(form.fen)) setPlayTarget(index);
+  }
+
+  function addWrongMove(sourceIndex: number) {
+    const text = form.wrongReplies[sourceIndex]?.text ?? "";
+    const index = form.wrongReplies.length;
+    setForm({
+      ...form,
+      wrongReplies: [...form.wrongReplies, { answer: "", text }],
+    });
+    if (form.kind === "move" && isValidFen(form.fen)) setPlayTarget(index);
   }
 
   async function onSave(event: FormEvent) {
@@ -242,9 +317,23 @@ export function AdminPuzzleForm() {
     await refresh();
   }
 
+  const solutionUci = form.kind === "move" ? normalizeUci(form.move) : "";
+  const afterFen =
+    solutionUci && isValidFen(form.fen)
+      ? fenAfterUci(form.fen, solutionUci)
+      : null;
+  const boardFen =
+    markupPhase === "after" && afterFen ? afterFen : form.fen;
+  const markupLayer =
+    markupPhase === "after" ? form.markup.after : form.markup.before;
+
   return (
-    <div className="mx-auto flex w-full max-w-[110rem] flex-col gap-3">
-      <div className="shrink-0">
+    <div className="flex min-h-0 w-full flex-1 flex-col overflow-hidden">
+      <details className="shrink-0 text-[11px] leading-none">
+        <summary className="cursor-pointer select-none px-1 py-0.5 text-muted-foreground hover:text-foreground">
+          Import PGN
+        </summary>
+      <div className="max-h-[40vh] overflow-y-auto px-1 pb-1">
       <PgnImportCard
         onImported={refresh}
         curriculum={curriculum}
@@ -260,17 +349,9 @@ export function AdminPuzzleForm() {
         }}
       />
       </div>
-      <div className="flex flex-col gap-4 xl:flex-row">
-        <div className="h-[100vh] min-h-[100vh] min-w-0 flex-1 overflow-y-scroll">
-        <Card className="bg-card">
-          <CardHeader>
-            <CardTitle>Kapitoly</CardTitle>
-            <p className="text-sm text-muted-foreground">
-              Kurz → kapitola → podkapitola. Přetáhni úlohu. Klik = edit. Nová
-              na vybrané kapitole.
-            </p>
-          </CardHeader>
-          <CardContent>
+      </details>
+      <div className="flex min-h-0 flex-1 overflow-hidden">
+        <div className="flex min-h-0 w-[min(38%,28rem)] shrink-0 flex-col overflow-hidden border-r border-border px-1">
             <CurriculumTree
               curriculum={curriculum}
               puzzles={puzzles}
@@ -294,50 +375,176 @@ export function AdminPuzzleForm() {
                 setForm({ ...emptyForm(), chapterId });
                 setStatus(null);
               }}
+              onDeletePuzzles={(ids) => void onDeletePuzzles(ids)}
+              onRenamePuzzle={(puzzle, title) => void renamePuzzleTitle(puzzle, title)}
             />
-          </CardContent>
-        </Card>
         </div>
-        <div className="h-[100vh] min-h-[100vh] min-w-0 flex-1 overflow-y-scroll">
-        <Card className="bg-card">
-          <CardHeader className="border-b border-border/60 bg-card">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div className="min-w-0">
-                <CardTitle>{form.id ? "Upravit úlohu" : "Nová úloha"}</CardTitle>
-                {status ? (
-                  <p className="mt-1 text-sm text-amber-600 dark:text-amber-300">
-                    {status}
-                  </p>
-                ) : null}
-              </div>
-              <Button type="submit" form="puzzle-form" disabled={saving}>
-                {saving ? "Ukládám…" : "Uložit"}
-              </Button>
-            </div>
-          </CardHeader>
-          <CardContent className="pt-6">
-            <form
+        <form
               id="puzzle-form"
-              className="grid gap-6"
+              className="flex min-h-0 min-w-0 flex-1 overflow-hidden"
               onSubmit={onSave}
             >
-              <div className="max-w-[36rem]">
-                <p className="mb-2 text-sm font-medium">Náhled</p>
-                <FenPreviewBoard
-                  fen={form.fen}
-                  selectedSquares={
-                    form.kind === "squares" ? parseSquares(form.squares) : []
-                  }
-                  onToggleSquare={
-                    form.kind === "squares" ? toggleSquare : undefined
+              <div className="flex h-full min-h-0 w-[min(calc(100vh-13rem),calc(100vw-42rem))] shrink-0 flex-col px-1">
+                  <PositionSetupBoard
+                    boardId="admin-preview-setup"
+                    className="min-h-0 flex-1"
+                    fen={boardFen}
+                    onChange={(fen) => {
+                      if (markupPhase === "after") return;
+                      setForm((current) => ({ ...current, fen }));
+                    }}
+                    selectedSquares={
+                      form.kind === "squares" ? parseSquares(form.squares) : []
+                    }
+                    onToggleSquare={
+                      form.kind === "squares" ? toggleSquare : undefined
+                    }
+                    markup={markupLayer}
+                    onMarkupChange={(layer) =>
+                      setForm((current) => ({
+                        ...current,
+                        markup: {
+                          ...current.markup,
+                          [markupPhase]: layer,
+                        },
+                      }))
+                    }
+                    tool={markupTool}
+                    brush={markupBrush}
+                  />
+                  <Textarea
+                    id="explanation"
+                    rows={2}
+                    className="mt-0.5 min-h-0 shrink-0 resize-none px-1.5 py-0.5 text-xs"
+                    placeholder="Po správném tahu…"
+                    value={form.explanation}
+                    onChange={(e) =>
+                      setForm({ ...form, explanation: e.target.value })
+                    }
+                  />
+                  {groupWrongReplies(form.wrongReplies).map((group) => (
+                    <div key={group.indices.join("-")} className="grid shrink-0 gap-0.5">
+                      <div className="flex flex-wrap items-center gap-0.5">
+                        {group.indices.map((replyIndex) => {
+                          const reply = form.wrongReplies[replyIndex];
+                          if (!reply) return null;
+                          return (
+                            <span
+                              key={replyIndex}
+                              className="inline-flex items-center gap-0.5 rounded bg-muted px-1 py-0 text-[10px]"
+                            >
+                              {reply.answer || "…"}
+                              <button
+                                type="button"
+                                className="text-muted-foreground hover:text-foreground"
+                                onClick={() =>
+                                  setForm({
+                                    ...form,
+                                    wrongReplies: form.wrongReplies.filter(
+                                      (_, index) => index !== replyIndex,
+                                    ),
+                                  })
+                                }
+                              >
+                                ×
+                              </button>
+                            </span>
+                          );
+                        })}
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="h-5 px-1.5 text-[10px]"
+                          disabled={!isValidFen(form.fen)}
+                          onClick={() => addWrongMove(group.indices[0] ?? 0)}
+                        >
+                          + tah
+                        </Button>
+                      </div>
+                      <Input
+                        className="h-6 px-1.5 text-xs"
+                        placeholder="Proč špatně (pro všechny tahy)"
+                        value={group.text}
+                        onChange={(event) => {
+                          const text = event.target.value;
+                          setForm({
+                            ...form,
+                            wrongReplies: form.wrongReplies.map((reply, index) =>
+                              group.indices.includes(index)
+                                ? { ...reply, text }
+                                : reply,
+                            ),
+                          });
+                        }}
+                      />
+                    </div>
+                  ))}
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="mt-0.5 h-6 shrink-0 px-2 text-[11px]"
+                    onClick={addWrongGroup}
+                  >
+                    + špatná
+                  </Button>
+              </div>
+                <div className="flex h-full min-w-0 flex-1 flex-col overflow-hidden px-2 py-1">
+                  <div className="flex shrink-0 flex-col gap-1">
+                  <div className="flex flex-wrap items-center gap-1">
+                    <Button type="submit" size="sm" className="h-7 px-2 text-xs" disabled={saving}>
+                      {saving ? "Ukládám…" : "Uložit"}
+                    </Button>
+                    {status ? (
+                      <span className="text-[11px] text-amber-600 dark:text-amber-300">
+                        {status}
+                      </span>
+                    ) : null}
+                  </div>
+                  <div className="flex flex-wrap gap-0.5">
+                    <button
+                      type="button"
+                      className={`rounded px-1.5 py-0.5 text-[11px] ${markupTool === "piece" ? "bg-[#81b64c] text-zinc-950" : "bg-muted"}`}
+                      onClick={() => setMarkupTool("piece")}
+                    >
+                      Upravit pozici
+                    </button>
+                    <button
+                      type="button"
+                      className={`rounded px-1.5 py-0.5 text-[11px] ${form.kind === "move" ? "bg-[#81b64c] text-zinc-950" : "bg-muted"}`}
+                      onClick={() => setForm({ ...form, kind: "move" })}
+                    >
+                      Zahraj tah
+                    </button>
+                    <button
+                      type="button"
+                      className={`rounded px-1.5 py-0.5 text-[11px] ${form.kind === "squares" ? "bg-[#81b64c] text-zinc-950" : "bg-muted"}`}
+                      onClick={() => setForm({ ...form, kind: "squares" })}
+                    >
+                      Označ pole
+                    </button>
+                  </div>
+                <MarkupPalette
+                  markup={form.markup}
+                  layer={markupLayer}
+                  phase={markupPhase}
+                  tool={markupTool}
+                  brush={markupBrush}
+                  kind={form.kind}
+                  canAfter={Boolean(afterFen)}
+                  onPhase={setMarkupPhase}
+                  onTool={setMarkupTool}
+                  onBrush={setMarkupBrush}
+                  onChange={(markup) =>
+                    setForm((current) => ({ ...current, markup }))
                   }
                 />
-              </div>
-              <div className="grid gap-4">
-              <Field label="Kapitola" htmlFor="chapter">
+                  </div>
+                  <div className="flex min-h-0 flex-1 flex-col justify-evenly gap-2">
                 <select
                   id="chapter"
-                  className="h-9 w-full rounded-md border border-border bg-background px-3 text-sm"
+                  className="h-8 w-full shrink-0 rounded-md border border-border bg-background px-2 text-sm"
                   value={form.chapterId ?? ""}
                   onChange={(event) => {
                     const chapterId = event.target.value || null;
@@ -355,91 +562,42 @@ export function AdminPuzzleForm() {
                     </option>
                   ))}
                 </select>
-              </Field>
-              <Field label="Název" htmlFor="title">
                 <Input
                   id="title"
                   required
+                  className="h-8 shrink-0 px-2"
+                  placeholder="Název"
                   value={form.title}
                   onChange={(e) => setForm({ ...form, title: e.target.value })}
                 />
-              </Field>
-              <div className="grid gap-2">
-                <Label>Typ</Label>
-                <div className="flex gap-2">
-                  <button
-                    type="button"
-                    className={`rounded-md px-3 py-1.5 text-sm ${form.kind === "move" ? "bg-[#81b64c] text-zinc-950" : "bg-muted"}`}
-                    onClick={() => setForm({ ...form, kind: "move" })}
-                  >
-                    Zahraj tah
-                  </button>
-                  <button
-                    type="button"
-                    className={`rounded-md px-3 py-1.5 text-sm ${form.kind === "squares" ? "bg-[#81b64c] text-zinc-950" : "bg-muted"}`}
-                    onClick={() => setForm({ ...form, kind: "squares" })}
-                  >
-                    Označ pole
-                  </button>
-                </div>
-              </div>
-              <Field label="FEN" htmlFor="fen">
-                <div className="flex flex-wrap gap-2">
-                  <Input
-                    id="fen"
-                    required
-                    value={form.fen}
-                    onChange={(e) => setForm({ ...form, fen: e.target.value })}
-                  />
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="shrink-0"
-                    onClick={() => setPositionOpen(true)}
-                  >
-                    Upravit pozici
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="shrink-0"
-                    disabled={!isValidFen(form.fen)}
-                    onClick={() => setBoardOpen(true)}
-                  >
-                    {form.kind === "squares"
-                      ? "Označit na šachovnici"
-                      : "Značky na šachovnici"}
-                  </Button>
-                </div>
-              </Field>
               {form.kind === "move" ? (
-                <Field label="Řešení (UCI)" htmlFor="move">
-                  <div className="flex gap-2">
+                  <div className="flex shrink-0 gap-1">
                     <Input
                       id="move"
                       required
-                      placeholder="e1e8"
+                      className="h-8 px-2"
+                      placeholder="Řešení UCI"
                       value={form.move}
                       onChange={(e) => setForm({ ...form, move: e.target.value })}
                     />
                     <Button
                       type="button"
                       variant="outline"
-                      className="shrink-0"
+                      size="sm"
+                      className="h-8 shrink-0 px-2"
                       disabled={!isValidFen(form.fen)}
                       onClick={() => setPlayTarget("solution")}
                     >
-                      Zahrát na šachovnici
+                      Tah
                     </Button>
                   </div>
-                </Field>
               ) : (
-                <Field label="Správná pole" htmlFor="squares">
-                  <div className="flex gap-2">
+                  <div className="flex shrink-0 gap-1">
                     <Input
                       id="squares"
                       required
-                      placeholder="b3 b5 c2 … nebo šachovnice"
+                      className="h-8 px-2"
+                      placeholder="Pole b3 b5…"
                       value={form.squares}
                       onChange={(e) =>
                         setForm({ ...form, squares: e.target.value })
@@ -448,157 +606,59 @@ export function AdminPuzzleForm() {
                     <Button
                       type="button"
                       variant="outline"
-                      className="shrink-0"
+                      size="sm"
+                      className="h-8 shrink-0 px-2"
                       disabled={!isValidFen(form.fen)}
                       onClick={() => setBoardOpen(true)}
                     >
-                      Na šachovnici
+                      Pole
                     </Button>
                   </div>
-                </Field>
               )}
-              <div className="grid gap-4 sm:grid-cols-2">
-                <Field label="Téma" htmlFor="theme">
+                <div className="grid shrink-0 grid-cols-2 gap-2">
                   <Input
                     id="theme"
-                    placeholder="Mat v 1"
+                    className="h-8 px-2"
+                    placeholder="Téma"
                     value={form.theme}
                     onChange={(e) => setForm({ ...form, theme: e.target.value })}
                   />
-                </Field>
-                <Field label="Úroveň" htmlFor="level">
                   <Input
                     id="level"
-                    placeholder="Začátečník"
+                    className="h-8 px-2"
+                    placeholder="Úroveň"
                     value={form.level}
                     onChange={(e) => setForm({ ...form, level: e.target.value })}
                   />
-                </Field>
-              </div>
-              <Field label="Partie" htmlFor="source">
-                <Input
-                  id="source"
-                  placeholder="Kasparov vs Karpov, 1985. Žák to může skrýt."
-                  value={form.source}
-                  onChange={(e) => setForm({ ...form, source: e.target.value })}
-                />
-              </Field>
-              <Field label="Zadání" htmlFor="hint">
-                <Textarea
-                  id="hint"
-                  placeholder="Bílý na tahu dá mat. Prázdné = doplní se samo."
-                  value={form.hint}
-                  onChange={(e) => setForm({ ...form, hint: e.target.value })}
-                />
-              </Field>
-              <Field label="Vysvětlení" htmlFor="explanation">
-                <Textarea
-                  id="explanation"
-                  placeholder="Po správném tahu. Často prázdné."
-                  value={form.explanation}
-                  onChange={(e) =>
-                    setForm({ ...form, explanation: e.target.value })
-                  }
-                />
-              </Field>
-              <div className="grid gap-2">
-                <Label>Špatná odpověď → text</Label>
-                <p className="text-xs text-muted-foreground">
-                  Tah: UCI (e1e7). Pole: jedno i víc (e1 nebo e1 f1). Žák uvidí
-                  text jen u této odpovědi.
-                </p>
-                {form.wrongReplies.map((reply, replyIndex) => (
-                  <div
-                    key={replyIndex}
-                    className="grid gap-2 sm:grid-cols-[minmax(7rem,10rem)_auto_minmax(0,1fr)_auto]"
-                  >
-                    <Input
-                      placeholder={form.kind === "squares" ? "e1" : "e1e7"}
-                      value={reply.answer}
-                      onChange={(event) => {
-                        const next = [...form.wrongReplies];
-                        next[replyIndex] = {
-                          ...reply,
-                          answer: event.target.value,
-                        };
-                        setForm({ ...form, wrongReplies: next });
-                      }}
-                    />
-                    {form.kind === "move" ? (
-                      <Button
-                        type="button"
-                        variant="outline"
-                        className="shrink-0"
-                        disabled={!isValidFen(form.fen)}
-                        onClick={() => setPlayTarget(replyIndex)}
-                      >
-                        Zahrát na šachovnici
-                      </Button>
-                    ) : null}
-                    <Input
-                      placeholder="Proč je to špatně"
-                      value={reply.text}
-                      onChange={(event) => {
-                        const next = [...form.wrongReplies];
-                        next[replyIndex] = {
-                          ...reply,
-                          text: event.target.value,
-                        };
-                        setForm({ ...form, wrongReplies: next });
-                      }}
-                    />
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={() =>
-                        setForm({
-                          ...form,
-                          wrongReplies: form.wrongReplies.filter(
-                            (_, index) => index !== replyIndex,
-                          ),
-                        })
-                      }
-                    >
-                      Smazat
-                    </Button>
-                  </div>
-                ))}
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() =>
-                    setForm({
-                      ...form,
-                      wrongReplies: [
-                        ...form.wrongReplies,
-                        { answer: "", text: "" },
-                      ],
-                    })
-                  }
-                >
-                  Přidat špatnou odpověď
-                </Button>
-              </div>
-              <Field label="Video URL" htmlFor="videoUrl">
+                </div>
+                <div className="grid shrink-0 grid-cols-2 gap-2">
+                  <Input
+                    id="source"
+                    className="h-8 px-2"
+                    placeholder="Partie"
+                    value={form.source}
+                    onChange={(e) => setForm({ ...form, source: e.target.value })}
+                  />
                 <Input
                   id="videoUrl"
-                  placeholder="YouTube nebo Loom"
+                  className="h-8 px-2"
+                  placeholder="Video URL"
                   value={form.videoUrl}
                   onChange={(e) => setForm({ ...form, videoUrl: e.target.value })}
                 />
-              </Field>
+                </div>
+                <Textarea
+                  id="hint"
+                  rows={4}
+                  className="min-h-[4rem] flex-1 resize-none px-2 py-1.5 text-sm"
+                  placeholder="Zadání"
+                  value={form.hint}
+                  onChange={(e) => setForm({ ...form, hint: e.target.value })}
+                />
+                  </div>
               </div>
             </form>
-          </CardContent>
-        </Card>
-        </div>
       </div>
-      <PositionEditorDialog
-        open={positionOpen}
-        fen={form.fen}
-        onClose={() => setPositionOpen(false)}
-        onChange={(next) => setForm((current) => ({ ...current, fen: next }))}
-      />
       <MarkupEditor
         open={boardOpen}
         onClose={() => setBoardOpen(false)}
@@ -618,18 +678,25 @@ export function AdminPuzzleForm() {
         title={
           playTarget === "solution" ? "Zahrát řešení" : "Zahrát špatný tah"
         }
-        onClose={() => setPlayTarget(null)}
+        onClose={() => {
+          const next = reopenPlayRef.current;
+          reopenPlayRef.current = null;
+          setPlayTarget(next);
+        }}
         onPick={(uci) => {
           if (playTarget === "solution") {
             setForm((current) => ({ ...current, move: uci }));
             return;
           }
           if (typeof playTarget === "number") {
+            const index = playTarget;
             setForm((current) => {
               const next = [...current.wrongReplies];
-              const row = next[playTarget];
+              const row = next[index];
               if (!row) return current;
-              next[playTarget] = { ...row, answer: uci };
+              next[index] = { ...row, answer: uci };
+              next.push({ answer: "", text: row.text });
+              reopenPlayRef.current = next.length - 1;
               return { ...current, wrongReplies: next };
             });
           }
@@ -637,6 +704,24 @@ export function AdminPuzzleForm() {
       />
     </div>
   );
+}
+
+function groupWrongReplies(replies: { answer: string; text: string }[]) {
+  const groups: { text: string; indices: number[] }[] = [];
+  const byText = new Map<string, number>();
+  replies.forEach((reply, index) => {
+    const key = reply.text.trim();
+    if (key) {
+      const existing = byText.get(key);
+      if (existing !== undefined) {
+        groups[existing].indices.push(index);
+        return;
+      }
+      byText.set(key, groups.length);
+    }
+    groups.push({ text: reply.text, indices: [index] });
+  });
+  return groups;
 }
 
 function chapterOptions(curriculum: Curriculum, courseId: string) {
@@ -657,19 +742,3 @@ function chapterOptions(curriculum: Curriculum, courseId: string) {
   return options;
 }
 
-function Field({
-  label,
-  htmlFor,
-  children,
-}: {
-  label: string;
-  htmlFor: string;
-  children: ReactNode;
-}) {
-  return (
-    <div className="grid gap-2">
-      <Label htmlFor={htmlFor}>{label}</Label>
-      {children}
-    </div>
-  );
-}

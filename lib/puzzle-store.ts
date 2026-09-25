@@ -106,6 +106,15 @@ export async function savePuzzleRow(
   return { data: null, error: { message: "Úlohu nešlo uložit." } };
 }
 
+export async function deletePuzzleRows(
+  supabase: SupabaseClient,
+  ids: string[],
+) {
+  if (!ids.length) return { error: null };
+  const { error } = await supabase.from("puzzles").delete().in("id", ids);
+  return { error };
+}
+
 export function puzzleKey(fen: string, move?: string | null) {
   return `${fen.trim()}|${move ?? ""}`;
 }

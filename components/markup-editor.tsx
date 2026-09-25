@@ -20,9 +20,8 @@ import { Button } from "@/components/ui/button";
 import { fenAfterUci, isValidFen, normalizeUci, orientationFromFen } from "@/lib/chess";
 import { X } from "lucide-react";
 import {
-  BRUSHES,
   BRUSH_HEX,
-  BRUSH_LABEL,
+  MONTESSORI_BRUSHES,
   MARKUP_ARROW_OPTIONS,
   cloneBoardMarkup,
   emptyBoardMarkup,
@@ -388,19 +387,31 @@ export function MarkupEditor({
                     </ModeButton>
                   ))}
                 </div>
-                <div className="grid grid-cols-5 gap-1.5">
-                  {BRUSHES.map((item) => (
+                <div className="grid gap-1.5">
+                  {MONTESSORI_BRUSHES.map((item) => (
                     <button
-                      key={item}
+                      key={item.id}
                       type="button"
-                      title={BRUSH_LABEL[item]}
+                      title={item.hint}
                       className={cn(
-                        "size-7 rounded-full border-2 shadow-sm",
-                        brush === item ? "border-foreground" : "border-transparent",
+                        "flex items-center gap-2 rounded-md px-1.5 py-1 text-left text-xs",
+                        brush === item.id
+                          ? "bg-foreground/10 ring-1 ring-foreground/30"
+                          : "hover:bg-foreground/5",
                       )}
-                      style={{ backgroundColor: BRUSH_HEX[item] }}
-                      onClick={() => setBrush(item)}
-                    />
+                      onClick={() => setBrush(item.id)}
+                    >
+                      <span
+                        className="size-5 shrink-0 rounded-full border border-black/15"
+                        style={{ backgroundColor: BRUSH_HEX[item.id] }}
+                      />
+                      <span>
+                        <span className="block font-medium">{item.label}</span>
+                        <span className="block text-[10px] text-muted-foreground">
+                          {item.hint}
+                        </span>
+                      </span>
+                    </button>
                   ))}
                 </div>
                 <p className="text-xs leading-snug text-muted-foreground">

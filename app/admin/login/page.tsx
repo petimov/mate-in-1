@@ -65,7 +65,7 @@ function LoginForm() {
 
 export default function AdminLoginPage() {
   return (
-    <main className="flex min-h-[calc(100dvh-3rem)] items-center justify-center px-4 py-16">
+    <main className="flex min-h-0 flex-1 items-center justify-center overflow-y-auto px-4 py-8">
       <Suspense>
         <LoginForm />
       </Suspense>

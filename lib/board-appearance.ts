@@ -192,6 +192,8 @@ export function boardSquareStyles(theme: BoardTheme) {
   return {
     darkSquareStyle: squareCss(theme, "dark"),
     lightSquareStyle: squareCss(theme, "light"),
+    dropSquareStyle: { boxShadow: "none", outline: "none", border: "none" },
+    squareStyle: { outline: "none", boxShadow: "none", border: "none" },
     showNotation: false,
     darkSquareNotationStyle: { color: "#f3e4c4" },
     lightSquareNotationStyle: { color: "#5c3a1e" },

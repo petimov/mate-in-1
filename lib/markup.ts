@@ -9,8 +9,25 @@ export const BRUSHES = [
   "orange",
   "sky",
   "olive",
+  "brown",
+  "black",
 ] as const;
 export type Brush = (typeof BRUSHES)[number];
+
+export const MONTESSORI_BRUSHES: {
+  id: Brush;
+  label: string;
+  hint: string;
+}[] = [
+  { id: "orange", label: "Král", hint: "Oranžová" },
+  { id: "rose", label: "Dáma", hint: "Růžová" },
+  { id: "violet", label: "Věž", hint: "Fialová" },
+  { id: "blue", label: "Střelec", hint: "Modrá" },
+  { id: "green", label: "Kůň", hint: "Zelená" },
+  { id: "brown", label: "Pěšec", hint: "Hnědá" },
+  { id: "black", label: "Ucpání", hint: "Černá · vlastní figura" },
+  { id: "red", label: "Hrozba", hint: "Červená" },
+];
 
 export type MarkupArrow = {
   from: string;
@@ -51,6 +68,8 @@ export const BRUSH_HEX: Record<Brush, string> = {
   orange: "#ef7d3b",
   sky: "#5ec4e0",
   olive: "#8fb03e",
+  brown: "#8a4f24",
+  black: "#1f1f1f",
 };
 
 export const BRUSH_FILL: Record<Brush, string> = {
@@ -64,6 +83,8 @@ export const BRUSH_FILL: Record<Brush, string> = {
   orange: hexRgba(BRUSH_HEX.orange, 0.48),
   sky: hexRgba(BRUSH_HEX.sky, 0.48),
   olive: hexRgba(BRUSH_HEX.olive, 0.48),
+  brown: hexRgba(BRUSH_HEX.brown, 0.5),
+  black: hexRgba(BRUSH_HEX.black, 0.42),
 };
 
 export const BRUSH_LABEL: Record<Brush, string> = {
@@ -77,6 +98,8 @@ export const BRUSH_LABEL: Record<Brush, string> = {
   orange: "Oranžová",
   sky: "Nebesky",
   olive: "Olivová",
+  brown: "Hnědá",
+  black: "Černá",
 };
 
 export const MARKUP_ARROW_OPTIONS = {
@@ -115,6 +138,8 @@ export function chessgroundBrushes() {
     orange: chessgroundBrush("orange"),
     sky: chessgroundBrush("sky"),
     olive: chessgroundBrush("olive"),
+    brown: chessgroundBrush("brown"),
+    black: chessgroundBrush("black"),
   };
 }
 

@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 
 import { isAdminAuthenticated } from "@/lib/admin-auth";
 import { DEMO_PUZZLES, isUuid, mapPuzzleRow, validatePuzzleInput } from "@/lib/puzzles";
-import { listPuzzles, savePuzzleRow } from "@/lib/puzzle-store";
+import { deletePuzzleRows, listPuzzles, savePuzzleRow } from "@/lib/puzzle-store";
 import { createServerSupabase } from "@/lib/supabase";
 import type { Puzzle, PuzzleKind } from "@/lib/types";
 import { denyUnlessUlohyAccess } from "@/lib/ulohy-access";
@@ -70,4 +70,34 @@ export async function POST(request: Request) {
   }
 
   return NextResponse.json({ puzzle: mapPuzzleRow(data) });
+}
+
+export async function DELETE(request: Request) {
+  if (!(await isAdminAuthenticated())) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const supabase = createServerSupabase();
+  if (!supabase) {
+    return NextResponse.json(
+      { error: "Supabase není nastavený." },
+      { status: 503 },
+    );
+  }
+
+  const body = (await request.json()) as { ids?: string[] };
+  const ids = Array.from(new Set((body.ids ?? []).filter(isUuid)));
+  if (!ids.length) {
+    return NextResponse.json({ error: "Nic ke smazání." }, { status: 400 });
+  }
+
+  const { error } = await deletePuzzleRows(supabase, ids);
+  if (error) {
+    return NextResponse.json(
+      { error: error.message ?? "Úlohy nešlo smazat." },
+      { status: 500 },
+    );
+  }
+
+  return NextResponse.json({ deleted: ids.length });
 }
