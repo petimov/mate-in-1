@@ -398,29 +398,30 @@ export function parseChapterSide(value: unknown): ChapterSide | undefined {
   return value === "black" || value === "white" ? value : undefined;
 }
 
-export function nextChapterSide(side?: ChapterSide): ChapterSide | undefined {
-  if (side === "white") return "black";
-  if (side === "black") return undefined;
-  return "white";
+export function nextChapterSide(side?: ChapterSide): ChapterSide {
+  return side === "black" ? "white" : "black";
 }
 
 export function chapterSideOf(
   chapters: Chapter[],
   chapterId?: string | null,
-): ChapterSide | undefined {
-  if (!chapterId) return undefined;
-  const chain = chapterChain(chapters, chapterId);
-  for (let i = chain.length - 1; i >= 0; i -= 1) {
-    const side = chain[i]?.side;
-    if (side === "white" || side === "black") return side;
+): ChapterSide {
+  if (chapterId) {
+    const chain = chapterChain(chapters, chapterId);
+    for (let i = chain.length - 1; i >= 0; i -= 1) {
+      const side = chain[i]?.side;
+      if (side === "white" || side === "black") return side;
+    }
   }
-  return undefined;
+  return "white";
 }
 
 export function chapterSideLabel(side?: ChapterSide): string {
-  if (side === "black") return "Černá";
-  if (side === "white") return "Bílá";
-  return "Barva";
+  return side === "black" ? "Černá" : "Bílá";
+}
+
+export function chapterSideShort(side?: ChapterSide): string {
+  return side === "black" ? "Č" : "B";
 }
 
 export function emptyPlacement(): PuzzlePlacement {

@@ -28,6 +28,7 @@ import {
   chapterKindOf,
   chapterSideOf,
   chapterSideLabel,
+  chapterSideShort,
   CH_MAT,
   CH_MAT_VEZI,
   CH_MAT_STRELCEM,
@@ -173,7 +174,8 @@ export function CurriculumTree({
         slug,
         title,
         sort: nextSort(siblings),
-        kind: "vyklad",
+        kind: "cviceni",
+        side: "white",
       },
     ]);
     if (!parentId) setNewChapter("");
@@ -207,15 +209,11 @@ export function CurriculumTree({
 
   function cycleSide(chapter: Chapter) {
     setChapters(
-      curriculum.chapters.map((item) => {
-        if (item.id !== chapter.id) return item;
-        const side = nextChapterSide(item.side);
-        if (!side) {
-          const { side: _drop, ...rest } = item;
-          return rest;
-        }
-        return { ...item, side };
-      }),
+      curriculum.chapters.map((item) =>
+        item.id === chapter.id
+          ? { ...item, side: nextChapterSide(item.side ?? chapterSideOf(curriculum.chapters, item.id)) }
+          : item,
+      ),
     );
   }
 
@@ -546,19 +544,19 @@ function ChapterNode({
         <div className="flex shrink-0 items-center gap-0.5">
           <button
             type="button"
-            title="Druh kapitoly"
-            className="w-14 shrink-0 rounded px-1 text-center text-[10px] font-semibold uppercase tracking-wide text-muted-foreground hover:bg-foreground/10 hover:text-foreground"
+            title={chapterKindOf(chapter) === "cviceni" ? "Cvičení" : "Výklad"}
+            className="w-5 shrink-0 rounded px-1 text-center text-[10px] font-semibold uppercase tracking-wide text-muted-foreground hover:bg-foreground/10 hover:text-foreground"
             onClick={() => onCycleKind(chapter)}
           >
-            {chapterKindOf(chapter) === "cviceni" ? "Cvičení" : "Výklad"}
+            {chapterKindOf(chapter) === "cviceni" ? "C" : "V"}
           </button>
           <button
             type="button"
-            title="Barva úloh v kapitole"
-            className="w-12 shrink-0 rounded px-1 text-center text-[10px] font-semibold uppercase tracking-wide text-muted-foreground hover:bg-foreground/10 hover:text-foreground"
+            title={chapterSideLabel(chapter.side ?? chapterSideOf(chapters, chapter.id))}
+            className="w-5 shrink-0 rounded px-1 text-center text-[10px] font-semibold uppercase tracking-wide text-muted-foreground hover:bg-foreground/10 hover:text-foreground"
             onClick={() => onCycleSide(chapter)}
           >
-            {chapterSideLabel(chapter.side ?? chapterSideOf(chapters, chapter.id))}
+            {chapterSideShort(chapter.side ?? chapterSideOf(chapters, chapter.id))}
           </button>
           <div className="flex w-12 justify-center">
             {selectedChapterId === chapter.id ? (
@@ -700,10 +698,10 @@ function PuzzleRow({
         </button>
       </div>
       <div className="flex shrink-0 items-center gap-0.5">
-        <span className="w-14 text-center text-[10px] uppercase text-muted-foreground">
-          {puzzleKind(puzzle) === "squares" ? "Pole" : "Tah"}
+        <span className="w-5 text-center text-[10px] uppercase text-muted-foreground">
+          {puzzleKind(puzzle) === "squares" ? "P" : "T"}
         </span>
-        <span className="w-12" />
+        <span className="w-5" />
         <span className="w-12" />
         <IconBtn title="Nahoru" onClick={() => onMoveDir(puzzle, -1)}>
           <ChevronsUp className="size-3.5" />

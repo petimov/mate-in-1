@@ -3,25 +3,25 @@
 @custom-variant dark (&:is(.dark *));
 
 :root {
-  --background: #f4ead8;
-  --foreground: #2a1c12;
-  --card: #fbf4e6;
-  --card-foreground: #2a1c12;
+  --background: #ffffff;
+  --foreground: #171717;
+  --card: #ffffff;
+  --card-foreground: #171717;
   --primary: #b36a3c;
-  --primary-foreground: #fff8ee;
-  --secondary: #eadfc8;
-  --secondary-foreground: #2a1c12;
-  --muted: #eadfc8;
-  --muted-foreground: #6b5340;
-  --accent: #e8d5b0;
-  --accent-foreground: #2a1c12;
+  --primary-foreground: #ffffff;
+  --secondary: #f4f4f5;
+  --secondary-foreground: #171717;
+  --muted: #f4f4f5;
+  --muted-foreground: #52525b;
+  --accent: #f4f4f5;
+  --accent-foreground: #171717;
   --destructive: #b42318;
-  --destructive-foreground: #fff8ee;
-  --border: #d4c0a0;
-  --input: #d4c0a0;
-  --ring: #c9a24e;
-  --header: #fbf4e6;
-  --panel: #efe2cc;
+  --destructive-foreground: #ffffff;
+  --border: #e5e5e5;
+  --input: #e5e5e5;
+  --ring: #b36a3c;
+  --header: #ffffff;
+  --panel: #fafafa;
   --radius: 0.75rem;
 }
 
@@ -83,26 +83,9 @@ body {
   color: var(--foreground);
 }
 
-html.admin-theme:not(.dark) {
-  --background: #ffffff;
-  --foreground: #171717;
-  --card: #ffffff;
-  --card-foreground: #171717;
-  --secondary: #f4f4f5;
-  --secondary-foreground: #171717;
-  --muted: #f4f4f5;
-  --muted-foreground: #52525b;
-  --accent: #f4f4f5;
-  --accent-foreground: #171717;
-  --border: #e5e5e5;
-  --input: #e5e5e5;
-  --header: #ffffff;
-  --panel: #fafafa;
-}
-
 .home-root,
 .dark .home-root {
-  background: #f4ead8;
+  background: #ffffff;
   font-family: var(--font-nunito), ui-sans-serif, system-ui, sans-serif;
   color: #121212;
 }
@@ -110,7 +93,7 @@ html.admin-theme:not(.dark) {
 .home-header {
   font-family: var(--font-nunito), ui-sans-serif, system-ui, sans-serif;
   color: #121212;
-  background: #f4ead8;
+  background: #ffffff;
 }
 
 .home-header.is-stuck {
@@ -196,7 +179,7 @@ html.admin-theme:not(.dark) {
   position: relative;
   min-height: 100dvh;
   overflow: hidden;
-  background-color: #f4ead8;
+  background-color: #ffffff;
   padding: 150px 30px;
 }
 
@@ -369,7 +352,7 @@ html.admin-theme:not(.dark) {
   position: relative;
   z-index: 1;
   padding: 80px 30px 100px;
-  background: #f4ead8;
+  background: #ffffff;
 }
 
 .home-cards {
@@ -418,7 +401,7 @@ a.home-card:hover h3 {
 .home-about-sec {
   position: relative;
   padding: 100px 30px;
-  background: #f4ead8;
+  background: #ffffff;
 }
 
 .home-about-grid {
@@ -479,7 +462,7 @@ a.home-card:hover h3 {
 
 .home-timeline {
   padding: 100px 30px;
-  background: #f4ead8;
+  background: #ffffff;
 }
 
 .home-steps {
@@ -564,7 +547,7 @@ a.home-card:hover h3 {
   position: relative;
   overflow: hidden;
   padding: 50px 30px;
-  background: #f4ead8;
+  background: #ffffff;
 }
 
 .home-cta .home-btn {
@@ -588,7 +571,7 @@ a.home-card:hover h3 {
   position: relative;
   overflow: hidden;
   padding: 100px 30px;
-  background: #f4ead8;
+  background: #ffffff;
 }
 
 .home-stories::before {
@@ -618,7 +601,7 @@ a.home-card:hover h3 {
 
 .home-contact {
   padding: 100px 30px 80px;
-  background: #f4ead8;
+  background: #ffffff;
 }
 
 .home-contact-grid {

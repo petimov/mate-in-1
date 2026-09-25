@@ -2,7 +2,7 @@ export type BoardSoundKind = "move" | "capture" | "check" | "wrong" | "correct";
 export type BoardSoundPack = "lichess" | "wood" | "click" | "beep";
 
 export const BOARD_SOUND_KEY = "mate-board-sound-pack";
-export const DEFAULT_SOUND_PACK: BoardSoundPack = "lichess";
+export const DEFAULT_SOUND_PACK: BoardSoundPack = "wood";
 
 export const BOARD_SOUND_PACKS: { id: BoardSoundPack; name: string }[] = [
   { id: "lichess", name: "Lichess" },
@@ -152,60 +152,29 @@ function noiseClick(
 }
 
 function paintLichess(ac: AudioContext, dest: AudioNode, kind: BoardSoundKind, t: number) {
-  if (kind === "wrong") {
-    osc(ac, dest, t, { freq: 140, endFreq: 70, gain: 0.16, dur: 0.12 });
-    return;
-  }
-  if (kind === "correct") {
-    osc(ac, dest, t, { freq: 520, gain: 0.08, dur: 0.06 });
-    osc(ac, dest, t + 0.06, { freq: 690, gain: 0.07, dur: 0.08 });
-    return;
-  }
-  const capture = kind === "capture";
-  osc(ac, dest, t, {
-    freq: capture ? 210 : 280,
-    endFreq: capture ? 90 : 140,
-    gain: capture ? 0.22 : 0.14,
-    dur: capture ? 0.07 : 0.045,
-  });
-  osc(ac, dest, t, {
-    type: "triangle",
-    freq: capture ? 900 : 1400,
-    endFreq: 400,
-    gain: capture ? 0.07 : 0.05,
-    dur: 0.03,
-  });
-  if (kind === "check") {
-    osc(ac, dest, t + 0.05, { type: "triangle", freq: 880, gain: 0.07, dur: 0.1 });
-  }
+  paintWood(ac, dest, kind, t);
 }
 
 function paintWood(ac: AudioContext, dest: AudioNode, kind: BoardSoundKind, t: number) {
   if (kind === "wrong") {
-    osc(ac, dest, t, { freq: 90, endFreq: 40, gain: 0.28, dur: 0.16 });
-    noiseClick(ac, dest, t, 420, 0.22, 0.7);
-    return;
-  }
-  if (kind === "correct") {
-    noiseClick(ac, dest, t, 1500, 0.28, 1.5);
-    osc(ac, dest, t, { freq: 170, endFreq: 70, gain: 0.22, dur: 0.08 });
-    osc(ac, dest, t + 0.04, { type: "triangle", freq: 880, endFreq: 1320, gain: 0.12, dur: 0.16 });
+    osc(ac, dest, t, { freq: 90, endFreq: 40, gain: 0.22, dur: 0.12 });
+    noiseClick(ac, dest, t, 420, 0.18, 0.7);
     return;
   }
   const capture = kind === "capture";
   osc(ac, dest, t, {
     freq: capture ? 105 : 168,
     endFreq: capture ? 44 : 70,
-    gain: capture ? 0.42 : 0.26,
-    dur: capture ? 0.13 : 0.08,
+    gain: capture ? 0.38 : 0.24,
+    dur: capture ? 0.11 : 0.07,
   });
-  noiseClick(ac, dest, t, capture ? 780 : 1650, capture ? 0.48 : 0.36, capture ? 0.85 : 1.7);
+  noiseClick(ac, dest, t, capture ? 780 : 1650, capture ? 0.42 : 0.32, capture ? 0.85 : 1.7);
   if (capture) {
-    osc(ac, dest, t + 0.02, { freq: 70, endFreq: 40, gain: 0.22, dur: 0.12 });
-    noiseClick(ac, dest, t + 0.016, 520, 0.2, 0.6);
+    osc(ac, dest, t + 0.02, { freq: 70, endFreq: 40, gain: 0.18, dur: 0.1 });
+    noiseClick(ac, dest, t + 0.016, 520, 0.16, 0.6);
   }
-  if (kind === "check") {
-    osc(ac, dest, t + 0.03, { type: "triangle", freq: 880, endFreq: 1320, gain: 0.12, dur: 0.16 });
+  if (kind === "check" || kind === "correct") {
+    noiseClick(ac, dest, t + 0.018, 2100, 0.16, 2.4, 0.028);
   }
 }
 
