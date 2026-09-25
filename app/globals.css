@@ -83,6 +83,23 @@ body {
   color: var(--foreground);
 }
 
+html.admin-theme:not(.dark) {
+  --background: #ffffff;
+  --foreground: #171717;
+  --card: #ffffff;
+  --card-foreground: #171717;
+  --secondary: #f4f4f5;
+  --secondary-foreground: #171717;
+  --muted: #f4f4f5;
+  --muted-foreground: #52525b;
+  --accent: #f4f4f5;
+  --accent-foreground: #171717;
+  --border: #e5e5e5;
+  --input: #e5e5e5;
+  --header: #ffffff;
+  --panel: #fafafa;
+}
+
 .home-root,
 .dark .home-root {
   background: #f4ead8;
