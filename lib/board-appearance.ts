@@ -43,9 +43,9 @@ export const BOARD_THEMES: BoardTheme[] = [
 ];
 
 export const PIECE_SETS: PieceSet[] = [
+  { id: "cburnett", name: "Lichess", lichess: "cburnett" },
   { id: "classic", name: "Classic" },
   { id: "fritz", name: "Fritz", folder: "/pieces/fritz" },
-  { id: "cburnett", name: "Lichess", lichess: "cburnett" },
   { id: "merida", name: "Merida", lichess: "merida" },
   { id: "alpha", name: "Alpha", lichess: "alpha" },
   { id: "cardinal", name: "Cardinal", lichess: "cardinal" },
@@ -55,7 +55,6 @@ export const PIECE_SETS: PieceSet[] = [
   { id: "gioco", name: "Gioco", lichess: "gioco" },
   { id: "horsey", name: "Horsey", lichess: "horsey" },
   { id: "maestro", name: "Maestro", lichess: "maestro" },
-  { id: "spatial", name: "Spatial", lichess: "spatial" },
   { id: "staunty", name: "Staunty", lichess: "staunty" },
   { id: "shapes", name: "Shapes", lichess: "shapes" },
   { id: "pixel", name: "Pixel", lichess: "pixel" },
@@ -63,9 +62,9 @@ export const PIECE_SETS: PieceSet[] = [
 ];
 
 export const DEFAULT_BOARD_ID = "babinga";
-export const DEFAULT_PIECE_ID = "fritz";
+export const DEFAULT_PIECE_ID = "cburnett";
 export const BOARD_THEME_KEY = "mate-board-theme-v2";
-export const PIECE_SET_KEY = "mate-piece-set-v2";
+export const PIECE_SET_KEY = "mate-piece-set-v3";
 
 const PIECE_KEYS = [
   "wP",
@@ -101,7 +100,7 @@ export function getPieceSet(id: string): PieceSet {
 }
 
 export function pieceUrl(set: PieceSet, piece: string): string | null {
-  if (set.folder) return `${set.folder}/${piece}.svg`;
+  if (set.folder) return `${set.folder}/${piece}.svg?v=3`;
   if (set.lichess) return lichessPieceUrl(set.lichess, piece);
   return null;
 }

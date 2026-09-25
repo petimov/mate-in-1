@@ -12,6 +12,7 @@ import { Upload } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -51,6 +52,8 @@ export function PgnImportCard({
   const [files, setFiles] = useState<string[]>([]);
   const [status, setStatus] = useState<string | null>(null);
   const [importing, setImporting] = useState(false);
+  const [titleBase, setTitleBase] = useState("");
+  const [numberTitles, setNumberTitles] = useState(true);
 
   const applyText = useCallback((text: string, names: string[]) => {
     const result = parsePgnText(text);
@@ -126,6 +129,7 @@ export function PgnImportCard({
       body: JSON.stringify({
         puzzles: parsed.puzzles.map((puzzle, index) => ({
           ...puzzle,
+          title: importTitle(puzzle.title, titleBase, numberTitles, index),
           chapterId: chapterId || undefined,
           sort: nextSortInChapter(puzzles, chapterId) + index,
         })),
@@ -182,6 +186,32 @@ export function PgnImportCard({
           onSelectCourse={onSelectCourse}
           onSelectChapter={onSelectChapter}
         />
+        <div className="grid gap-3 sm:grid-cols-[1fr_auto] sm:items-end">
+          <Field label="Název úloh" htmlFor="import-title">
+            <Input
+              id="import-title"
+              value={titleBase}
+              onChange={(event) => setTitleBase(event.target.value)}
+              placeholder="např. Mat věží"
+            />
+          </Field>
+          <label className="flex h-9 items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              className="size-4 accent-primary"
+              checked={numberTitles}
+              onChange={(event) => setNumberTitles(event.target.checked)}
+            />
+            Číslovat od 1
+          </label>
+        </div>
+        {titleBase.trim() ? (
+          <p className="text-xs text-muted-foreground">
+            {numberTitles
+              ? `Bude: ${titleBase.trim()} 1, ${titleBase.trim()} 2, …`
+              : `Všechny jako „${titleBase.trim()}“`}
+          </p>
+        ) : null}
         <input
           ref={inputRef}
           type="file"
@@ -265,6 +295,17 @@ export function PgnImportCard({
       </CardContent>
     </Card>
   );
+}
+
+function importTitle(
+  original: string,
+  base: string,
+  numbered: boolean,
+  index: number,
+) {
+  const name = base.trim();
+  if (!name) return original;
+  return numbered ? `${name} ${index + 1}` : name;
 }
 
 function nextSortInChapter(puzzles: Puzzle[], chapterId?: string | null) {
