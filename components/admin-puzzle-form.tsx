@@ -316,7 +316,7 @@ export function AdminPuzzleForm() {
               className="grid gap-6"
               onSubmit={onSave}
             >
-              <div className="max-w-64">
+              <div className="max-w-[36rem]">
                 <p className="mb-2 text-sm font-medium">Náhled</p>
                 <FenPreviewBoard
                   fen={form.fen}
