@@ -6,6 +6,7 @@ import {
   packMarkupComment,
   parseBoardMarkup,
   parsePuzzleMarkup,
+  type BoardMarkup,
   type PuzzleMarkup,
   unpackMarkupComment,
 } from "@/lib/markup";
@@ -219,7 +220,7 @@ export function matchWrongReply(
     if (exact) return exact;
 
     const notes: string[] = [];
-    let markup = exact?.markup;
+    let markup: BoardMarkup | undefined;
     for (const reply of list) {
       const keys = parseSquares(reply.answer);
       if (keys.length === 0) continue;

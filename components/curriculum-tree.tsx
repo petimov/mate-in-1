@@ -620,6 +620,7 @@ export function CurriculumTree({
             onDropChapter={onDropChapter}
             onDropBefore={onDropBefore}
             onMovePuzzleDir={movePuzzleDir}
+            onStepPuzzle={stepPuzzle}
             onTogglePuzzle={togglePuzzle}
             onToggleChapterPuzzles={toggleChapterPuzzles}
             dropChapterId={dropChapterId}
@@ -662,6 +663,7 @@ function ChapterNode({
   onDropChapter,
   onDropBefore,
   onMovePuzzleDir,
+  onStepPuzzle,
   onTogglePuzzle,
   onToggleChapterPuzzles,
   dropChapterId,
@@ -694,6 +696,7 @@ function ChapterNode({
   onDropChapter: (event: DragEvent, chapterId: string | null) => void;
   onDropBefore: (event: DragEvent, puzzle: Puzzle) => void;
   onMovePuzzleDir: (puzzle: Puzzle, dir: -1 | 1) => void;
+  onStepPuzzle: (fromId: string | undefined, dir: -1 | 1) => void;
   onTogglePuzzle: (id: string) => void;
   onToggleChapterPuzzles: (chapterId: string) => void;
   dropChapterId: string | null;
@@ -874,6 +877,7 @@ function ChapterNode({
               onDropChapter={onDropChapter}
               onDropBefore={onDropBefore}
               onMovePuzzleDir={onMovePuzzleDir}
+              onStepPuzzle={onStepPuzzle}
               onTogglePuzzle={onTogglePuzzle}
               onToggleChapterPuzzles={onToggleChapterPuzzles}
               dropChapterId={dropChapterId}
@@ -896,7 +900,7 @@ function ChapterNode({
               onToggle={() => onTogglePuzzle(puzzle.id)}
               onDropBefore={onDropBefore}
               onMoveDir={onMovePuzzleDir}
-              onStep={(dir) => stepPuzzle(puzzle.id, dir)}
+              onStep={(dir) => onStepPuzzle(puzzle.id, dir)}
               onStartRename={() => {
                 setRenameId(puzzle.id);
                 setRenameValue(puzzle.title);
