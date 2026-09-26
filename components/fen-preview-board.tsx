@@ -68,7 +68,10 @@ export function FenPreviewBoard({
   return (
     <div className={cn("space-y-2", className)}>
       <div className="relative aspect-square w-full">
-        <BoardFrame className="absolute inset-0 h-full w-full">
+        <BoardFrame
+          fen={position}
+          className="absolute inset-0 h-full w-full"
+        >
           <Chessboard key={`${board.id}-${position}`} options={options} />
         </BoardFrame>
       </div>

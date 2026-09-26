@@ -1,5 +1,11 @@
-import type { ChapterKind } from "@/lib/curriculum";
-import { sortPuzzles } from "@/lib/curriculum";
+import {
+  chapterKindOf,
+  chapterSideOf,
+  sortPuzzles,
+  type Chapter,
+  type ChapterKind,
+} from "@/lib/curriculum";
+import type { LessonMode } from "@/lib/review-prefs";
 import type { SrsMap } from "@/lib/srs";
 import type { Puzzle } from "@/lib/types";
 
@@ -20,13 +26,50 @@ export function sessionShouldShuffle(opts: {
   kind: ChapterKind;
   reviewOnly: boolean;
   firstPass: boolean;
+  lessonMode: LessonMode;
 }): boolean {
-  return opts.reviewOnly;
+  if (opts.lessonMode === "colors") return false;
+  if (opts.reviewOnly || opts.lessonMode === "chaos") return true;
+  return false;
+}
+
+export function filterLessonPuzzles(
+  puzzles: Puzzle[],
+  chapters: Chapter[],
+  mode: LessonMode,
+): Puzzle[] {
+  if (mode !== "chaos") return puzzles;
+  const kinds = new Map(chapters.map((chapter) => [chapter.id, chapter]));
+  return puzzles.filter((puzzle) => {
+    if (!puzzle.chapterId) return false;
+    return chapterKindOf(kinds.get(puzzle.chapterId)) === "cviceni";
+  });
+}
+
+export function orderPuzzlesBySide(
+  puzzles: Puzzle[],
+  chapters: Chapter[],
+): Puzzle[] {
+  const white: Puzzle[] = [];
+  const black: Puzzle[] = [];
+  for (const puzzle of sortPuzzles(puzzles)) {
+    if (chapterSideOf(chapters, puzzle.chapterId) === "black") {
+      black.push(puzzle);
+    } else {
+      white.push(puzzle);
+    }
+  }
+  return [...white, ...black];
 }
 
 export function orderSessionPuzzles(
   puzzles: Puzzle[],
   shuffle: boolean,
+  chapters?: Chapter[],
+  mode?: LessonMode,
 ): Puzzle[] {
+  if (mode === "colors" && chapters) {
+    return orderPuzzlesBySide(puzzles, chapters);
+  }
   return shuffle ? shufflePuzzles(puzzles) : sortPuzzles(puzzles);
 }

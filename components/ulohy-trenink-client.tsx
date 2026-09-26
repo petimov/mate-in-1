@@ -5,7 +5,13 @@ import { UlohySkeleton } from "@/components/ulohy-skeleton";
 import { descendantIds, findCourse } from "@/lib/curriculum";
 import { useUlohyData } from "@/lib/use-ulohy-data";
 
-export function UlohyTreninkClient({ chapterId }: { chapterId?: string }) {
+export function UlohyTreninkClient({
+  chapterId,
+  learn = false,
+}: {
+  chapterId?: string;
+  learn?: boolean;
+}) {
   const { curriculum, puzzles, error, loading } = useUlohyData();
   if (loading) return <UlohySkeleton />;
   if (error || !curriculum || !puzzles) {
@@ -27,10 +33,10 @@ export function UlohyTreninkClient({ chapterId }: { chapterId?: string }) {
     <PuzzleTrainer
       initialCurriculum={curriculum}
       initialPuzzles={scoped}
-      title="Trénink"
+      title={learn ? "Cvičení" : "Trénink"}
       backHref={course ? `/ulohy/${course.slug}` : "/ulohy"}
       backLabel="Kapitoly"
-      reviewOnly
+      reviewOnly={!learn}
     />
   );
 }

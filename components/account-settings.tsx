@@ -110,7 +110,7 @@ export function AccountSettings() {
       </section>
 
       <section className="mt-4 rounded-xl border border-border bg-card p-5">
-        <h2 className="text-lg font-semibold">Opakování</h2>
+        <h2 className="text-lg font-semibold">Studium</h2>
         <div className="mt-4">
           <ReviewSettings />
         </div>

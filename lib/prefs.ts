@@ -48,13 +48,17 @@ export function prefsFromMetadata(meta: unknown): Partial<Prefs> {
     "goodIntervals" in data ||
     "againIntervals" in data ||
     "againTimes" in data ||
-    "intervalUnit" in data;
+    "intervalUnit" in data ||
+    "lessonMode" in data ||
+    "showMarkup" in data;
   if (hasReview) {
     const review = normalizeReviewPrefs(data);
     next.goodIntervals = review.goodIntervals;
     next.againIntervals = review.againIntervals;
     next.againTimes = review.againTimes;
     next.intervalUnit = "min";
+    next.lessonMode = review.lessonMode;
+    next.showMarkup = review.showMarkup;
   }
   return next;
 }

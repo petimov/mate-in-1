@@ -1,6 +1,12 @@
 "use client";
 
-import { useEffect, useState, type DragEvent, type ReactNode } from "react";
+import {
+  useEffect,
+  useState,
+  type DragEvent,
+  type MouseEvent,
+  type ReactNode,
+} from "react";
 import {
   ChevronDown,
   ChevronRight,
@@ -11,6 +17,7 @@ import {
   Pencil,
   Plus,
   Trash2,
+  Undo2,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -50,11 +57,16 @@ type CurriculumTreeProps = {
   onSelectCourse: (id: string) => void;
   onSelectChapter: (id: string | null) => void;
   onSelectPuzzle: (puzzle: Puzzle) => void;
-  onCurriculum: (next: Curriculum) => void;
+  onCurriculum: (next: Curriculum, label?: string) => void;
   onMovePuzzle: (puzzleId: string, chapterId: string | null, beforeId?: string) => void;
   onNewPuzzle: (chapterId: string) => void;
   onDeletePuzzles: (ids: string[]) => void;
+  onDeleteSubtree: (chapterIds: string[], label: string) => void;
+  onDeleteCourse: (id: string) => void;
   onRenamePuzzle: (puzzle: Puzzle, title: string) => void;
+  onUndo: () => void;
+  canUndo: boolean;
+  undoLabel: string | null;
 };
 
 export function CurriculumTree({
@@ -70,7 +82,12 @@ export function CurriculumTree({
   onMovePuzzle,
   onNewPuzzle,
   onDeletePuzzles,
+  onDeleteSubtree,
+  onDeleteCourse,
   onRenamePuzzle,
+  onUndo,
+  canUndo,
+  undoLabel,
 }: CurriculumTreeProps) {
   const [newCourse, setNewCourse] = useState("");
   const [newChapter, setNewChapter] = useState("");
@@ -93,8 +110,8 @@ export function CurriculumTree({
   const roots = course
     ? childChapters(curriculum.chapters, null, course.id)
     : [];
-  function setChapters(chapters: Chapter[]) {
-    onCurriculum({ ...curriculum, chapters });
+  function setChapters(chapters: Chapter[], label: string) {
+    onCurriculum({ ...curriculum, chapters }, label);
   }
 
   function addCourse() {
@@ -105,13 +122,16 @@ export function CurriculumTree({
       title,
       curriculum.courses.map((item) => item.slug),
     );
-    onCurriculum({
-      ...curriculum,
-      courses: [
-        ...curriculum.courses,
-        { id, slug, title, sort: nextSort(curriculum.courses) },
-      ],
-    });
+    onCurriculum(
+      {
+        ...curriculum,
+        courses: [
+          ...curriculum.courses,
+          { id, slug, title, sort: nextSort(curriculum.courses) },
+        ],
+      },
+      `Nový kurz „${title}“`,
+    );
     setNewCourse("");
     onSelectCourse(id);
   }
@@ -128,34 +148,19 @@ export function CurriculumTree({
         .filter((item) => item.id !== id)
         .map((item) => item.slug),
     );
-    onCurriculum({
-      ...curriculum,
-      courses: curriculum.courses.map((item) =>
-        item.id === id ? { ...item, title, slug } : item,
-      ),
-    });
+    onCurriculum(
+      {
+        ...curriculum,
+        courses: curriculum.courses.map((item) =>
+          item.id === id ? { ...item, title, slug } : item,
+        ),
+      },
+      `Přejmenovat kurz „${title}“`,
+    );
   }
 
   function deleteCourse(id: string) {
-    if (curriculum.courses.length <= 1) return;
-    const drop = new Set(
-      curriculum.chapters
-        .filter((item) => item.courseId === id)
-        .map((item) => item.id),
-    );
-    for (const puzzle of puzzles) {
-      if (puzzle.chapterId && drop.has(puzzle.chapterId)) {
-        onMovePuzzle(puzzle.id, null);
-      }
-    }
-    const nextCourses = curriculum.courses.filter((item) => item.id !== id);
-    onCurriculum({
-      ...curriculum,
-      courses: nextCourses,
-      chapters: curriculum.chapters.filter((item) => item.courseId !== id),
-    });
-    if (courseId === id) onSelectCourse(nextCourses[0]?.id ?? "");
-    if (selectedChapterId && drop.has(selectedChapterId)) onSelectChapter(null);
+    onDeleteCourse(id);
   }
 
   function addChapter(parentId: string | null) {
@@ -170,19 +175,22 @@ export function CurriculumTree({
         .map((item) => item.slug),
     );
     const id = newId();
-    setChapters([
-      ...curriculum.chapters,
-      {
-        id,
-        courseId: course.id,
-        parentId,
-        slug,
-        title,
-        sort: nextSort(siblings),
-        kind: "cviceni",
-        side: "white",
-      },
-    ]);
+    setChapters(
+      [
+        ...curriculum.chapters,
+        {
+          id,
+          courseId: course.id,
+          parentId,
+          slug,
+          title,
+          sort: nextSort(siblings),
+          kind: "cviceni",
+          side: "white",
+        },
+      ],
+      parentId ? `Nová podkapitola „${title}“` : `Nová kapitola „${title}“`,
+    );
     if (!parentId) setNewChapter("");
     if (parentId) setOpen((current) => ({ ...current, [parentId]: true }));
     onSelectChapter(id);
@@ -198,6 +206,7 @@ export function CurriculumTree({
       curriculum.chapters.map((item) =>
         item.id === chapter.id ? { ...item, title } : item,
       ),
+      `Přejmenovat „${chapter.title}“`,
     );
     setRenameId(null);
   }
@@ -209,6 +218,7 @@ export function CurriculumTree({
           ? { ...item, kind: nextChapterKind(item.kind) }
           : item,
       ),
+      `Typ „${chapter.title}“`,
     );
   }
 
@@ -219,6 +229,7 @@ export function CurriculumTree({
           ? { ...item, side: nextChapterSide(item.side ?? chapterSideOf(curriculum.chapters, item.id)) }
           : item,
       ),
+      `Barva „${chapter.title}“`,
     );
   }
 
@@ -231,13 +242,23 @@ export function CurriculumTree({
       }
     };
     walk(chapter.id);
-    for (const puzzle of puzzles) {
-      if (puzzle.chapterId && ids.has(puzzle.chapterId)) {
-        onMovePuzzle(puzzle.id, null);
-      }
+    const extra = ids.size - 1;
+    const puzzleCount = puzzles.filter(
+      (item) => item.chapterId && ids.has(item.chapterId),
+    ).length;
+    const parts = [`Smazat „${chapter.title}“`];
+    if (extra) parts.push(`i ${extra} podkapitol`);
+    const head = `${parts.join(" ")}?`;
+    const tail = [
+      puzzleCount ? `${puzzleCount} úloh vypadne ze stromu (zůstanou v DB).` : "",
+      "Ctrl+Z vrátí.",
+    ]
+      .filter(Boolean)
+      .join(" ");
+    if (!window.confirm(`${head} ${tail}`)) {
+      return;
     }
-    setChapters(curriculum.chapters.filter((item) => !ids.has(item.id)));
-    if (selectedChapterId && ids.has(selectedChapterId)) onSelectChapter(null);
+    onDeleteSubtree([...ids], `Smazat „${chapter.title}“`);
   }
 
   function moveChapter(chapter: Chapter, dir: -1 | 1) {
@@ -255,6 +276,7 @@ export function CurriculumTree({
         if (item.id === swap.id) return { ...item, sort: chapter.sort };
         return item;
       }),
+      `Pořadí „${chapter.title}“`,
     );
   }
 
@@ -314,7 +336,7 @@ export function CurriculumTree({
 
   function massDelete() {
     if (!selected.length) return;
-    if (!window.confirm(`Smazat ${selected.length} úloh?`)) return;
+    if (!window.confirm(`Smazat ${selected.length} úloh? Ctrl+Z vrátí.`)) return;
     onDeletePuzzles(selected);
     setSelected([]);
   }
@@ -326,19 +348,89 @@ export function CurriculumTree({
     onRenamePuzzle(puzzle, title);
   }
 
+  function coursePuzzleList() {
+    if (!course) return [];
+    function walk(parentId: string | null): Puzzle[] {
+      const kids = childChapters(curriculum.chapters, parentId, course!.id);
+      const list: Puzzle[] = [];
+      for (const kid of kids) {
+        list.push(...walk(kid.id));
+        list.push(
+          ...puzzlesInChapter(puzzles, kid.id, false, curriculum.chapters),
+        );
+      }
+      return list;
+    }
+    return walk(null);
+  }
+
+  function revealPuzzle(puzzle: Puzzle) {
+    if (puzzle.chapterId) {
+      setOpen((current) => {
+        const next = { ...current };
+        let id: string | null = puzzle.chapterId ?? null;
+        while (id) {
+          next[id] = true;
+          id =
+            curriculum.chapters.find((item) => item.id === id)?.parentId ?? null;
+        }
+        return next;
+      });
+      onSelectChapter(puzzle.chapterId);
+    }
+    onSelectPuzzle(puzzle);
+  }
+
+  function neighborPuzzle(fromId: string | undefined, dir: -1 | 1) {
+    const list = coursePuzzleList();
+    if (!list.length) return null;
+    const index = fromId
+      ? list.findIndex((item) => item.id === fromId)
+      : -1;
+    if (index < 0) {
+      if (selectedChapterId) {
+        const inChapter = list.filter(
+          (item) => item.chapterId === selectedChapterId,
+        );
+        if (inChapter.length) {
+          return dir > 0 ? inChapter[0] : inChapter[inChapter.length - 1];
+        }
+      }
+      return dir > 0 ? list[0] : list[list.length - 1];
+    }
+    return list[index + dir] ?? null;
+  }
+
+  function stepPuzzle(fromId: string | undefined, dir: -1 | 1) {
+    const next = neighborPuzzle(fromId, dir);
+    if (next) revealPuzzle(next);
+  }
+
   useEffect(() => {
     function onKey(event: KeyboardEvent) {
       const target = event.target as HTMLElement | null;
       if (target?.closest("input, textarea, select")) return;
       if (event.key !== "ArrowUp" && event.key !== "ArrowDown") return;
-      const puzzle = puzzles.find((item) => item.id === selectedPuzzleId);
-      if (!puzzle) return;
       event.preventDefault();
-      movePuzzleDir(puzzle, event.key === "ArrowUp" ? -1 : 1);
+      const dir: -1 | 1 = event.key === "ArrowUp" ? -1 : 1;
+      if (event.shiftKey || event.altKey) {
+        const puzzle = puzzles.find((item) => item.id === selectedPuzzleId);
+        if (puzzle) movePuzzleDir(puzzle, dir);
+        return;
+      }
+      stepPuzzle(selectedPuzzleId, dir);
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   });
+
+  useEffect(() => {
+    if (!selectedPuzzleId) return;
+    const node = document.querySelector(
+      `[data-puzzle-id="${CSS.escape(selectedPuzzleId)}"]`,
+    );
+    node?.scrollIntoView({ block: "nearest" });
+  }, [selectedPuzzleId]);
 
   function movePuzzleDir(puzzle: Puzzle, dir: -1 | 1) {
     const siblings = sortPuzzles(
@@ -408,7 +500,7 @@ export function CurriculumTree({
                 if (courses.length <= 1) return;
                 if (
                   !window.confirm(
-                    `Smazat kurz „${item.title}“ i jeho kapitoly?`,
+                    `Smazat kurz „${item.title}“ i jeho kapitoly? Ctrl+Z vrátí.`,
                   )
                 ) {
                   return;
@@ -432,6 +524,17 @@ export function CurriculumTree({
         <Button type="button" variant="outline" className="h-6 px-1.5 text-xs" onClick={addCourse}>
           <Plus className="size-3" />
           Kurz
+        </Button>
+        <Button
+          type="button"
+          variant="outline"
+          className="h-6 px-1.5 text-xs"
+          disabled={!canUndo}
+          title={undoLabel ? `Zpět: ${undoLabel} (Ctrl+Z)` : "Nic k vrácení"}
+          onClick={onUndo}
+        >
+          <Undo2 className="size-3" />
+          Zpět
         </Button>
       </div>
 
@@ -524,7 +627,7 @@ export function CurriculumTree({
             onNewPuzzle={onNewPuzzle}
             onRenamePuzzle={renamePuzzle}
             onDeletePuzzle={(puzzle) => {
-              if (!window.confirm(`Smazat „${puzzle.title}“?`)) return;
+              if (!window.confirm(`Smazat „${puzzle.title}“? Ctrl+Z vrátí.`)) return;
               onDeletePuzzles([puzzle.id]);
             }}
             depth={0}
@@ -793,6 +896,7 @@ function ChapterNode({
               onToggle={() => onTogglePuzzle(puzzle.id)}
               onDropBefore={onDropBefore}
               onMoveDir={onMovePuzzleDir}
+              onStep={(dir) => stepPuzzle(puzzle.id, dir)}
               onStartRename={() => {
                 setRenameId(puzzle.id);
                 setRenameValue(puzzle.title);
@@ -820,6 +924,7 @@ function PuzzleRow({
   onToggle,
   onDropBefore,
   onMoveDir,
+  onStep,
   onStartRename,
   onRename,
   onCancelRename,
@@ -836,6 +941,7 @@ function PuzzleRow({
   onToggle: () => void;
   onDropBefore: (event: DragEvent, puzzle: Puzzle) => void;
   onMoveDir: (puzzle: Puzzle, dir: -1 | 1) => void;
+  onStep: (dir: -1 | 1) => void;
   onStartRename: () => void;
   onRename: () => void;
   onCancelRename: () => void;
@@ -863,6 +969,7 @@ function PuzzleRow({
         event.stopPropagation();
         onDropBefore(event, puzzle);
       }}
+      data-puzzle-id={puzzle.id}
       className={cn(
         "group grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-1 rounded px-0.5 py-0 text-left text-[13px] leading-5",
         active ? "bg-muted text-foreground" : "text-muted-foreground hover:bg-foreground/5 hover:text-foreground",
@@ -910,10 +1017,22 @@ function PuzzleRow({
             active ? "flex" : "hidden group-hover:flex",
           )}
         >
-        <IconBtn title="Nahoru" onClick={() => onMoveDir(puzzle, -1)}>
+        <IconBtn
+          title="Předchozí úloha · Shift: posunout"
+          onClick={(event) => {
+            if (event.shiftKey) onMoveDir(puzzle, -1);
+            else onStep(-1);
+          }}
+        >
           <ChevronsUp className="size-3" />
         </IconBtn>
-        <IconBtn title="Dolů" onClick={() => onMoveDir(puzzle, 1)}>
+        <IconBtn
+          title="Další úloha · Shift: posunout"
+          onClick={(event) => {
+            if (event.shiftKey) onMoveDir(puzzle, 1);
+            else onStep(1);
+          }}
+        >
           <ChevronsDown className="size-3" />
         </IconBtn>
         <IconBtn title="Přejmenovat" onClick={onStartRename}>
@@ -960,7 +1079,7 @@ function IconBtn({
   children,
 }: {
   title: string;
-  onClick: () => void;
+  onClick: (event: MouseEvent<HTMLButtonElement>) => void;
   children: ReactNode;
 }) {
   return (

@@ -909,6 +909,30 @@ a.home-card:hover h3 {
   display: block;
 }
 
+.board-frame-turn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.board-frame-turn.is-white::after,
+.board-frame-turn.is-black::after {
+  content: "";
+  width: 0.55rem;
+  height: 0.55rem;
+  border-radius: 50%;
+}
+
+.board-frame-turn.is-white::after {
+  background: #f6eed8;
+  box-shadow: 0 0 0 1px #2a1810;
+}
+
+.board-frame-turn.is-black::after {
+  background: #1a120c;
+  box-shadow: 0 0 0 1px #e8c97a;
+}
+
 .board-frame-ranks,
 .board-frame-files {
   display: grid;

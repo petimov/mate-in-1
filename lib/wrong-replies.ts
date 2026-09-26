@@ -1,8 +1,10 @@
 import { normalizeUci, uciToSan } from "@/lib/chess";
 import {
   emptyPuzzleMarkup,
+  isEmptyBoardMarkup,
   isEmptyPuzzleMarkup,
   packMarkupComment,
+  parseBoardMarkup,
   parsePuzzleMarkup,
   type PuzzleMarkup,
   unpackMarkupComment,
@@ -23,13 +25,24 @@ export function parseWrongReplies(raw: unknown): WrongReply[] {
   const replies: WrongReply[] = [];
   for (const item of raw) {
     if (!item || typeof item !== "object") continue;
-    const row = item as { answer?: unknown; uci?: unknown; text?: unknown };
+    const row = item as {
+      answer?: unknown;
+      uci?: unknown;
+      text?: unknown;
+      markup?: unknown;
+    };
     const answer = String(row.answer ?? row.uci ?? "")
       .trim()
       .toLowerCase();
     const text = String(row.text ?? "").trim();
-    if (!answer || !text) continue;
-    replies.push({ answer, text });
+    const markup = parseBoardMarkup(row.markup);
+    if (!answer) continue;
+    if (!text && isEmptyBoardMarkup(markup)) continue;
+    replies.push({
+      answer,
+      text,
+      ...(isEmptyBoardMarkup(markup) ? {} : { markup }),
+    });
   }
   return replies;
 }
@@ -111,14 +124,23 @@ export function unpackExplanation(raw: string | null | undefined): {
 }
 
 function mergeReplies(a: WrongReply[], b: WrongReply[]): WrongReply[] {
-  const seen = new Set<string>();
-  const out: WrongReply[] = [];
+  const map = new Map<string, WrongReply>();
   for (const reply of [...a, ...b]) {
-    if (seen.has(reply.answer)) continue;
-    seen.add(reply.answer);
-    out.push(reply);
+    const prev = map.get(reply.answer);
+    if (!prev) {
+      map.set(reply.answer, reply);
+      continue;
+    }
+    map.set(reply.answer, {
+      answer: reply.answer,
+      text: prev.text || reply.text,
+      markup:
+        prev.markup && !isEmptyBoardMarkup(prev.markup)
+          ? prev.markup
+          : reply.markup,
+    });
   }
-  return out;
+  return [...map.values()];
 }
 
 export function mergeWrongSources(
@@ -179,15 +201,14 @@ function moveMatchesAnswer(
 export function matchWrongReply(
   replies: WrongReply[] | undefined,
   attempt: { uci?: string; squares?: string[]; fen?: string },
-): string | undefined {
+): WrongReply | undefined {
   const list = parseWrongReplies(replies);
   if (list.length === 0) return undefined;
 
   if (attempt.uci) {
-    const hit = list.find((reply) =>
+    return list.find((reply) =>
       moveMatchesAnswer(attempt.uci!, attempt.fen, reply.answer),
     );
-    return hit?.text;
   }
 
   if (attempt.squares) {
@@ -195,17 +216,21 @@ export function matchWrongReply(
     const exact = list.find((reply) =>
       sameSquares(parseSquares(reply.answer), marked),
     );
-    if (exact) return exact.text;
+    if (exact) return exact;
 
     const notes: string[] = [];
+    let markup = exact?.markup;
     for (const reply of list) {
       const keys = parseSquares(reply.answer);
       if (keys.length === 0) continue;
       if (keys.every((square) => marked.includes(square))) {
-        notes.push(reply.text);
+        if (reply.text) notes.push(reply.text);
+        if (!markup && reply.markup) markup = reply.markup;
       }
     }
-    if (notes.length > 0) return notes.join(" ");
+    if (notes.length > 0 || markup) {
+      return { answer: marked.join(" "), text: notes.join(" "), markup };
+    }
   }
 
   return undefined;

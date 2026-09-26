@@ -13,6 +13,7 @@ import {
   useTrainerControls,
 } from "@/components/trainer-controls-provider";
 import { useAuth } from "@/components/auth-provider";
+import { useReviewPrefs } from "@/components/review-prefs-provider";
 import { Button } from "@/components/ui/button";
 import { fetchWithAuth } from "@/lib/auth-fetch";
 import { buildLine, startFenForLine } from "@/lib/chess";
@@ -29,9 +30,9 @@ import {
   withMateSubchapters,
   type Curriculum,
 } from "@/lib/curriculum";
-import { visibleMarkup } from "@/lib/markup";
+import { isEmptyBoardMarkup, visibleMarkup } from "@/lib/markup";
 import { puzzleKind } from "@/lib/puzzles";
-import type { Puzzle, PuzzleKind } from "@/lib/types";
+import type { Puzzle, PuzzleKind, WrongReply } from "@/lib/types";
 import { matchWrongReply } from "@/lib/wrong-replies";
 import {
   buildTrainQueue,
@@ -40,10 +41,12 @@ import {
   gradePuzzle,
 } from "@/lib/srs";
 import {
+  filterLessonPuzzles,
   isFirstPass,
   orderSessionPuzzles,
   sessionShouldShuffle,
 } from "@/lib/queue-order";
+
 function kindFromWindow(): PuzzleKind | "all" {
   if (typeof window === "undefined") return "all";
   const kind = new URLSearchParams(window.location.search).get("kind");
@@ -72,6 +75,8 @@ export function PuzzleTrainer({
   chapterSlug,
 }: PuzzleTrainerProps) {
   const { user, ready: authReady } = useAuth();
+  const { prefs, hydrated: prefsReady } = useReviewPrefs();
+  const lessonMode = prefs.lessonMode;
   const slugs = chapterParam(chapterSlug);
   const startKind = kindFromWindow();
 
@@ -83,7 +88,8 @@ export function PuzzleTrainer({
   const [index, setIndex] = useState(0);
   const [ply, setPly] = useState(0);
   const [loading, setLoading] = useState(!initialPuzzles);
-  const [wrongNote, setWrongNote] = useState<string | null>(null);
+  const [wrongHit, setWrongHit] = useState<WrongReply | null>(null);
+  const wrongNote = wrongHit?.text?.trim() ? wrongHit.text : null;
   const [queue, setQueue] = useState<Puzzle[]>([]);
   const [sessionTotal, setSessionTotal] = useState(0);
   const [srsNote, setSrsNote] = useState<string | null>(null);
@@ -95,9 +101,10 @@ export function PuzzleTrainer({
 
   useEffect(() => {
     if (!wrongNote) return;
-    const timer = window.setTimeout(() => setWrongNote(null), 3000);
+    if (wrongHit?.markup && !isEmptyBoardMarkup(wrongHit.markup)) return;
+    const timer = window.setTimeout(() => setWrongHit(null), 3000);
     return () => window.clearTimeout(timer);
-  }, [wrongNote]);
+  }, [wrongHit, wrongNote]);
 
   useEffect(() => {
     if (initialPuzzles) return;
@@ -151,14 +158,18 @@ export function PuzzleTrainer({
   const scopeIds = chapterScopeIds(curriculum, courseSlug, lastSlug);
 
   const scoped = useMemo(() => {
-    if (slugs.length === 0) return puzzles;
-    if (!scopeIds) return puzzles;
+    const inScope =
+      slugs.length === 0 || !scopeIds
+        ? puzzles
+        : puzzles.filter(
+            (puzzle) => puzzle.chapterId && scopeIds.has(puzzle.chapterId),
+          );
     return sortPuzzles(
-      puzzles.filter(
-        (puzzle) => puzzle.chapterId && scopeIds.has(puzzle.chapterId),
-      ),
+      reviewOnly
+        ? inScope
+        : filterLessonPuzzles(inScope, curriculum.chapters, lessonMode),
     );
-  }, [slugs.length, puzzles, scopeIds]);
+  }, [curriculum.chapters, lessonMode, puzzles, reviewOnly, scopeIds, slugs.length]);
 
   const visible = useMemo(
     () =>
@@ -173,7 +184,7 @@ export function PuzzleTrainer({
   sourceRef.current = source;
 
   useEffect(() => {
-    if (!authReady) return;
+    if (!authReady || !prefsReady) return;
     const items = sourceRef.current;
     const map = getSrsSnapshot();
     const queued = user
@@ -188,8 +199,14 @@ export function PuzzleTrainer({
       kind,
       reviewOnly,
       firstPass,
+      lessonMode,
     });
-    const next = orderSessionPuzzles(queued, shuffle);
+    const next = orderSessionPuzzles(
+      queued,
+      shuffle,
+      curriculum.chapters,
+      lessonMode,
+    );
     setLockedOrder(!shuffle);
     setQueue(next);
     setSessionTotal(next.length);
@@ -199,7 +216,17 @@ export function PuzzleTrainer({
     recordedRef.current = null;
     setSrsNote(null);
     setSrsReady(true);
-  }, [authReady, chapter?.id, chapter?.kind, reviewOnly, sourceKey, user]);
+  }, [
+    authReady,
+    chapter?.id,
+    chapter?.kind,
+    curriculum.chapters,
+    lessonMode,
+    prefsReady,
+    reviewOnly,
+    sourceKey,
+    user,
+  ]);
 
   useEffect(() => {
     if (queue.length === 0) return;
@@ -236,13 +263,15 @@ export function PuzzleTrainer({
   const maxPlyRef = useRef(maxPly);
   maxPlyRef.current = maxPly;
 
-  const boardMarkup = useMemo(
-    () => visibleMarkup(puzzle?.markup, atEnd),
-    [atEnd, puzzle],
-  );
+  const boardMarkup = useMemo(() => {
+    if (wrongHit?.markup && !isEmptyBoardMarkup(wrongHit.markup)) {
+      return wrongHit.markup;
+    }
+    return prefs.showMarkup ? visibleMarkup(puzzle?.markup, atEnd) : undefined;
+  }, [atEnd, prefs.showMarkup, puzzle, wrongHit]);
 
   const goToPuzzle = useCallback((nextIndex: number) => {
-    setWrongNote(null);
+    setWrongHit(null);
     setSrsNote(null);
     setPly(0);
     setIndex(nextIndex);
@@ -255,7 +284,7 @@ export function PuzzleTrainer({
   }, []);
 
   const onCorrect = useCallback(() => {
-    setWrongNote(null);
+    setWrongHit(null);
     setPly((current) => Math.min(current + 1, maxPlyRef.current));
   }, []);
 
@@ -263,7 +292,7 @@ export function PuzzleTrainer({
     const current = puzzleRef.current;
     if (!current) return;
     failedRef.current = true;
-    setWrongNote(
+    setWrongHit(
       matchWrongReply(current.wrongReplies, {
         uci,
         fen: lineRef.current.fens[plyRef.current] ?? current.fen,
@@ -275,7 +304,7 @@ export function PuzzleTrainer({
     const current = puzzleRef.current;
     if (!current) return;
     failedRef.current = true;
-    setWrongNote(matchWrongReply(current.wrongReplies, { squares }) ?? null);
+    setWrongHit(matchWrongReply(current.wrongReplies, { squares }) ?? null);
   }, []);
 
   const onNext = useCallback(() => {
@@ -305,7 +334,7 @@ export function PuzzleTrainer({
     failedRef.current = false;
     recordedRef.current = null;
     setSrsNote(null);
-    setWrongNote(null);
+    setWrongHit(null);
     setPly(0);
   }, [atEnd, goToPuzzle, index, isSquares, list, user]);
 
@@ -336,7 +365,7 @@ export function PuzzleTrainer({
     failedRef.current = false;
     recordedRef.current = null;
     setSrsNote(null);
-    setWrongNote(null);
+    setWrongHit(null);
   }, []);
 
   useEffect(() => {
@@ -352,7 +381,7 @@ export function PuzzleTrainer({
 
   useEffect(() => {
     setPly(0);
-    setWrongNote(null);
+    setWrongHit(null);
     setSrsNote(null);
   }, [puzzle?.id]);
 
@@ -399,6 +428,11 @@ export function PuzzleTrainer({
           onSelect={goToPuzzle}
           onShuffle={onShuffle}
           shuffleLocked={lockedOrder}
+          lockHint={
+            lessonMode === "colors"
+              ? "Nejdřív bílé, pak černé."
+              : "Po kapitolách. Naše pořadí."
+          }
           title={title ?? chapter?.title ?? "Úlohy"}
           backHref={
             backHref ??

@@ -5,11 +5,15 @@ export const HOUR = 60;
 export const DAY_MIN = 24 * 60;
 const MAX_MINUTES = 365 * DAY_MIN;
 
+export type LessonMode = "guided" | "chaos" | "colors";
+
 export type ReviewPrefs = {
   goodIntervals: number[];
   againIntervals: number[];
   againTimes: number;
   intervalUnit: "min";
+  lessonMode: LessonMode;
+  showMarkup: boolean;
 };
 
 export const DEFAULT_REVIEW_PREFS: ReviewPrefs = {
@@ -17,7 +21,14 @@ export const DEFAULT_REVIEW_PREFS: ReviewPrefs = {
   againIntervals: [0, 1 * DAY_MIN, 3 * DAY_MIN],
   againTimes: 3,
   intervalUnit: "min",
+  lessonMode: "guided",
+  showMarkup: true,
 };
+
+export function sanitizeLessonMode(raw: unknown): LessonMode {
+  if (raw === "chaos" || raw === "colors") return raw;
+  return "guided";
+}
 
 export const GOOD_PRESETS: { label: string; intervals: number[] }[] = [
   { label: "Žádné", intervals: [] },
@@ -113,6 +124,8 @@ export function normalizeReviewPrefs(raw: unknown): ReviewPrefs {
         ? sanitizeAgainTimes(data.againTimes)
         : DEFAULT_REVIEW_PREFS.againTimes,
     intervalUnit: "min",
+    lessonMode: sanitizeLessonMode(data.lessonMode),
+    showMarkup: data.showMarkup === false ? false : true,
   };
 }
 

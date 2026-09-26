@@ -212,14 +212,25 @@ export function MarkupEditor({
         skipClickRef.current = false;
         return;
       }
-      applySquare(square);
+      if (boardMode === "solution") applySquare(square);
     },
-    [applySquare],
+    [applySquare, boardMode],
+  );
+
+  const onSquareRightClick = useCallback(
+    ({ square }: SquareHandlerArgs) => {
+      if (skipClickRef.current) {
+        skipClickRef.current = false;
+        return;
+      }
+      if (boardMode === "markup") applySquare(square);
+    },
+    [applySquare, boardMode],
   );
 
   const onSquareMouseDown = useCallback(
     ({ square }: SquareHandlerArgs, event: MouseEvent) => {
-      if (event.button !== 0) return;
+      if (event.button !== 2) return;
       if (boardMode !== "markup" || tool !== "arrow") return;
       arrowFromRef.current = square;
       setArrowFrom(square);
@@ -229,7 +240,7 @@ export function MarkupEditor({
 
   const onSquareMouseUp = useCallback(
     ({ square }: SquareHandlerArgs, event: MouseEvent) => {
-      if (event.button !== 0) return;
+      if (event.button !== 2) return;
       if (boardMode !== "markup" || tool !== "arrow") return;
       const from = arrowFromRef.current;
       if (!from || from === square) return;
@@ -276,6 +287,7 @@ export function MarkupEditor({
       squareStyles,
       squareRenderer,
       onSquareClick,
+      onSquareRightClick,
       onSquareMouseDown,
       onSquareMouseUp,
       boardStyle: {
@@ -290,6 +302,7 @@ export function MarkupEditor({
       displayFen,
       layer,
       onSquareClick,
+      onSquareRightClick,
       onSquareMouseDown,
       onSquareMouseUp,
       orientation,
@@ -329,7 +342,11 @@ export function MarkupEditor({
             onContextMenu={(event) => event.preventDefault()}
           >
             {valid ? (
-              <BoardFrame orientation={orientation} className="h-full w-full">
+              <BoardFrame
+                orientation={orientation}
+                fen={displayFen}
+                className="h-full w-full"
+              >
                 <Chessboard key={board.id} options={options} />
               </BoardFrame>
             ) : (

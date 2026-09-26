@@ -152,7 +152,7 @@ export function PositionEditorDialog({
           className="my-2 aspect-square w-full"
           onContextMenu={(event) => event.preventDefault()}
         >
-          <BoardFrame className="h-full w-full">
+          <BoardFrame fen={displayFen} className="h-full w-full">
             <Chessboard key={board.id} options={options} />
           </BoardFrame>
         </div>

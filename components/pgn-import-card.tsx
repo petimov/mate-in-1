@@ -26,6 +26,7 @@ import type { Puzzle } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 type PgnImportCardProps = {
+  onBeforeImport?: () => void;
   onImported: () => Promise<void> | void;
   curriculum: Curriculum;
   puzzles: Puzzle[];
@@ -36,6 +37,7 @@ type PgnImportCardProps = {
 };
 
 export function PgnImportCard({
+  onBeforeImport,
   onImported,
   curriculum,
   puzzles,
@@ -120,6 +122,7 @@ export function PgnImportCard({
 
   async function onImport() {
     if (!parsed?.puzzles.length) return;
+    onBeforeImport?.();
     setImporting(true);
     setStatus(null);
 

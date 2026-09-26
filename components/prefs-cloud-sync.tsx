@@ -45,13 +45,17 @@ export function PrefsCloudSync() {
     if (
       remote.goodIntervals !== undefined ||
       remote.againIntervals !== undefined ||
-      remote.againTimes !== undefined
+      remote.againTimes !== undefined ||
+      remote.lessonMode !== undefined ||
+      remote.showMarkup !== undefined
     ) {
       setReview({
         goodIntervals: remote.goodIntervals ?? review.goodIntervals,
         againIntervals: remote.againIntervals ?? review.againIntervals,
         againTimes: remote.againTimes ?? review.againTimes,
         intervalUnit: "min",
+        lessonMode: remote.lessonMode ?? review.lessonMode,
+        showMarkup: remote.showMarkup ?? review.showMarkup,
       });
     }
     const merged: Prefs = {
@@ -63,6 +67,8 @@ export function PrefsCloudSync() {
       againIntervals: remote.againIntervals ?? review.againIntervals,
       againTimes: remote.againTimes ?? review.againTimes,
       intervalUnit: "min",
+      lessonMode: remote.lessonMode ?? review.lessonMode,
+      showMarkup: remote.showMarkup ?? review.showMarkup,
     };
     const hasRemote = Object.keys(remote).length > 0;
     lastSaved.current = hasRemote ? serializePrefs(merged) : "";
@@ -96,6 +102,8 @@ export function PrefsCloudSync() {
       againIntervals: review.againIntervals,
       againTimes: review.againTimes,
       intervalUnit: "min",
+      lessonMode: review.lessonMode,
+      showMarkup: review.showMarkup,
     };
     const packed = serializePrefs(prefs);
     if (packed === lastSaved.current) return;

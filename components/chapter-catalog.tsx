@@ -5,6 +5,7 @@ import { UlohyLink as Link } from "@/components/ulohy-link";
 import { BookOpen, RotateCcw } from "lucide-react";
 
 import { useAuth } from "@/components/auth-provider";
+import { useReviewPrefs } from "@/components/review-prefs-provider";
 import { BoardSettingsMenu } from "@/components/board-settings-menu";
 import { ChapterBreadcrumb } from "@/components/chapter-breadcrumb";
 import { useSrsMap } from "@/components/srs-stats";
@@ -79,6 +80,25 @@ function leafChapters(
   return out;
 }
 
+function chaosLearnHref(chapterId?: string | null) {
+  const params = new URLSearchParams({ learn: "1" });
+  if (chapterId) params.set("chapter", chapterId);
+  return `/ulohy/trenink?${params.toString()}`;
+}
+
+function chapterHasCviceni(
+  chapter: Chapter,
+  chapters: Chapter[],
+  puzzles: Puzzle[],
+): boolean {
+  if (chapterKindOf(chapter) === "cviceni") {
+    return puzzlesInChapter(puzzles, chapter.id, true, chapters).length > 0;
+  }
+  return childChapters(chapters, chapter.id).some((child) =>
+    chapterHasCviceni(child, chapters, puzzles),
+  );
+}
+
 function firstLearnHref(
   course: CurriculumCourse,
   chapters: Chapter[],
@@ -128,6 +148,9 @@ export function ChapterCatalog({
   puzzles,
 }: ChapterCatalogProps) {
   const { user, ready } = useAuth();
+  const { prefs } = useReviewPrefs();
+  const chaos = prefs.lessonMode === "chaos";
+  const byColor = prefs.lessonMode === "colors";
   const map = useSrsMap();
   const courses = sortCourses(curriculum.courses);
   const course =
@@ -138,7 +161,11 @@ export function ChapterCatalog({
     ? resolveChapterPath(curriculum, course.id, slugs)
     : undefined;
   const list = course
-    ? childChapters(curriculum.chapters, parent?.id ?? null, course.id)
+    ? childChapters(curriculum.chapters, parent?.id ?? null, course.id).filter(
+        (chapter) =>
+          !chaos ||
+          chapterHasCviceni(chapter, curriculum.chapters, puzzles),
+      )
     : [];
 
   if (!course && courses.length !== 1) {
@@ -193,13 +220,18 @@ export function ChapterCatalog({
       : null;
   const studied = stats ? stats.due + stats.later : 0;
   const total = scopeIds.length;
-  const learnHref = firstLearnHref(
-    course,
-    curriculum.chapters,
-    puzzles,
-    parent?.id ?? null,
-    user ? map : null,
-  );
+  const learnHref =
+    chaos || byColor
+      ? list.length > 0
+        ? chaosLearnHref(parent?.id)
+        : null
+      : firstLearnHref(
+        course,
+        curriculum.chapters,
+        puzzles,
+        parent?.id ?? null,
+        user ? map : null,
+      );
   const reviewHref = parent
     ? `/ulohy/trenink?chapter=${encodeURIComponent(parent.id)}`
     : "/ulohy/trenink";

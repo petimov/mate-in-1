@@ -17,6 +17,7 @@ type PuzzleSidebarProps = {
   onSelect: (index: number) => void;
   onShuffle: () => void;
   shuffleLocked?: boolean;
+  lockHint?: string;
   title?: string;
   backHref?: string;
   backLabel?: string;
@@ -38,6 +39,7 @@ export const PuzzleSidebar = memo(function PuzzleSidebar({
   onSelect,
   onShuffle,
   shuffleLocked = false,
+  lockHint = "Po kapitolách. Naše pořadí.",
   title = "Úlohy",
   backHref,
   backLabel,
@@ -121,7 +123,7 @@ export const PuzzleSidebar = memo(function PuzzleSidebar({
       <div className="border-t border-border/60 p-3">
         {shuffleLocked ? (
           <p className="text-center text-[11px] text-muted-foreground">
-            Výklad poprvé. Naše pořadí.
+            {lockHint}
           </p>
         ) : (
           <Button

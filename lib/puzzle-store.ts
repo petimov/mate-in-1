@@ -96,6 +96,26 @@ export async function savePuzzleRow(
       continue;
     }
 
+    if (
+      existingId &&
+      (error?.code === "PGRST116" ||
+        /JSON object requested|0 rows/i.test(message))
+    ) {
+      const inserted = await supabase
+        .from("puzzles")
+        .insert({ ...payload, id: existingId })
+        .select()
+        .single();
+      if (!inserted.error && inserted.data) {
+        return { data: inserted.data as unknown as PuzzleRow, error: null };
+      }
+      const insertColumn = missingColumn(inserted.error?.message ?? "");
+      if (insertColumn) {
+        payload = dropColumn(payload, insertColumn);
+        continue;
+      }
+    }
+
     const column = missingColumn(message);
     if (!column) {
       return { data: null, error: error ?? { message: "Úlohu nešlo uložit." } };

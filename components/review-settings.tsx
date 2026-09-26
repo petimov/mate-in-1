@@ -44,6 +44,101 @@ export function ReviewSettings() {
   return (
     <div className="grid gap-8">
       <div>
+        <h3 className="text-sm font-semibold">Jak zkoušet lekce</h3>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Kapitoly, jen cvičení, nebo nejdřív bílé a pak černé.
+        </p>
+        <div className="mt-3 grid gap-2 sm:grid-cols-3">
+          <button
+            type="button"
+            className={cn(
+              "rounded-xl border px-3 py-3 text-left",
+              prefs.lessonMode === "guided"
+                ? "border-primary bg-primary/10"
+                : "border-border hover:bg-foreground/5",
+            )}
+            onClick={() => setPrefs({ ...prefs, lessonMode: "guided" })}
+          >
+            <span className="block text-sm font-semibold">Po kapitolách</span>
+            <span className="mt-1 block text-xs text-muted-foreground">
+              Výklady i cvičení. Naše pořadí.
+            </span>
+          </button>
+          <button
+            type="button"
+            className={cn(
+              "rounded-xl border px-3 py-3 text-left",
+              prefs.lessonMode === "chaos"
+                ? "border-primary bg-primary/10"
+                : "border-border hover:bg-foreground/5",
+            )}
+            onClick={() => setPrefs({ ...prefs, lessonMode: "chaos" })}
+          >
+            <span className="block text-sm font-semibold">
+              Jen cvičení, náhodně
+            </span>
+            <span className="mt-1 block text-xs text-muted-foreground">
+              Bez výkladů. Úlohy přeházené.
+            </span>
+          </button>
+          <button
+            type="button"
+            className={cn(
+              "rounded-xl border px-3 py-3 text-left",
+              prefs.lessonMode === "colors"
+                ? "border-primary bg-primary/10"
+                : "border-border hover:bg-foreground/5",
+            )}
+            onClick={() => setPrefs({ ...prefs, lessonMode: "colors" })}
+          >
+            <span className="block text-sm font-semibold">Po barvách</span>
+            <span className="mt-1 block text-xs text-muted-foreground">
+              Nejdřív bílé, pak černé.
+            </span>
+          </button>
+        </div>
+      </div>
+
+      <div>
+        <h3 className="text-sm font-semibold">Značky na šachovnici</h3>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Šipky, kroužky a barvy polí. Admin je pořád vidí.
+        </p>
+        <div className="mt-3 grid gap-2 sm:grid-cols-2">
+          <button
+            type="button"
+            className={cn(
+              "rounded-xl border px-3 py-3 text-left",
+              prefs.showMarkup
+                ? "border-primary bg-primary/10"
+                : "border-border hover:bg-foreground/5",
+            )}
+            onClick={() => setPrefs({ ...prefs, showMarkup: true })}
+          >
+            <span className="block text-sm font-semibold">Zobrazit</span>
+            <span className="mt-1 block text-xs text-muted-foreground">
+              Šipky, kroužky, pole.
+            </span>
+          </button>
+          <button
+            type="button"
+            className={cn(
+              "rounded-xl border px-3 py-3 text-left",
+              !prefs.showMarkup
+                ? "border-primary bg-primary/10"
+                : "border-border hover:bg-foreground/5",
+            )}
+            onClick={() => setPrefs({ ...prefs, showMarkup: false })}
+          >
+            <span className="block text-sm font-semibold">Skrýt</span>
+            <span className="mt-1 block text-xs text-muted-foreground">
+              Čistá šachovnice.
+            </span>
+          </button>
+        </div>
+      </div>
+
+      <div>
         <h3 className="text-sm font-semibold">Správný tah</h3>
         <p className="mt-1 text-sm text-muted-foreground">
           Mezery: <code className="text-xs">10m</code>,{" "}

@@ -34,6 +34,14 @@ const DEMO_PUZZLES_RAW: Puzzle[] = [
       {
         answer: "e1e7",
         text: "Ve7 není mat. Král utekne na f8 nebo h8.",
+        markup: {
+          colors: {},
+          circles: {},
+          arrows: [
+            { from: "g8", to: "f8", color: "red" },
+            { from: "g8", to: "h8", color: "red" },
+          ],
+        },
       },
       {
         answer: "e1e5",

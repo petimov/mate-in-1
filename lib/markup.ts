@@ -21,10 +21,10 @@ export const MONTESSORI_BRUSHES: {
 }[] = [
   { id: "orange", label: "Král", hint: "Oranžová" },
   { id: "rose", label: "Dáma", hint: "Růžová" },
-  { id: "violet", label: "Věž", hint: "Fialová" },
-  { id: "blue", label: "Střelec", hint: "Modrá" },
-  { id: "green", label: "Kůň", hint: "Zelená" },
-  { id: "brown", label: "Pěšec", hint: "Hnědá" },
+  { id: "blue", label: "Věž", hint: "Modrá" },
+  { id: "violet", label: "Střelec", hint: "Fialová" },
+  { id: "brown", label: "Kůň", hint: "Hnědá" },
+  { id: "yellow", label: "Pěšec", hint: "Žlutá" },
   { id: "black", label: "Ucpání", hint: "Černá · vlastní figura" },
   { id: "red", label: "Hrozba", hint: "Červená" },
 ];
@@ -113,17 +113,17 @@ export const MARKUP_ARROW_OPTIONS = {
   color: BRUSH_HEX.yellow,
   secondaryColor: BRUSH_HEX.green,
   tertiaryColor: BRUSH_HEX.red,
-  arrowLengthReducerDenominator: 10,
-  sameTargetArrowLengthReducerDenominator: 6,
-  arrowWidthDenominator: 11,
-  activeArrowWidthMultiplier: 0.9,
-  opacity: 0.82,
-  activeOpacity: 0.55,
-  arrowStartOffset: 0.34,
+  arrowLengthReducerDenominator: 8,
+  sameTargetArrowLengthReducerDenominator: 5,
+  arrowWidthDenominator: 7,
+  activeArrowWidthMultiplier: 1,
+  opacity: 0.88,
+  activeOpacity: 0.62,
+  arrowStartOffset: 0.28,
 };
 
 function chessgroundBrush(id: Brush) {
-  return { key: id, color: BRUSH_HEX[id], opacity: 0.88, lineWidth: 5.5 };
+  return { key: id, color: BRUSH_HEX[id], opacity: 0.88, lineWidth: 8.5 };
 }
 
 export function chessgroundBrushes() {

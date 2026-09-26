@@ -17,34 +17,43 @@ function ulohyParts(pathname: string) {
     .map((part) => decodeURIComponent(part));
 }
 
-function treninkChapter() {
-  if (typeof window === "undefined") return undefined;
-  return new URLSearchParams(window.location.search).get("chapter") ?? undefined;
+function treninkQuery() {
+  if (typeof window === "undefined") return { chapterId: undefined, learn: false };
+  const params = new URLSearchParams(window.location.search);
+  return {
+    chapterId: params.get("chapter") ?? undefined,
+    learn: params.get("learn") === "1",
+  };
 }
 
 export function UlohyRouter() {
   const pathname = useClientPathname();
   const { loading } = useUlohyData();
   const [chapterId, setChapterId] = useState<string | undefined>(undefined);
-  const [shown, setShown] = useState({ pathname, chapterId });
+  const [learn, setLearn] = useState(false);
+  const [shown, setShown] = useState({ pathname, chapterId, learn });
 
   useEffect(() => {
-    const sync = () => setChapterId(treninkChapter());
+    const sync = () => {
+      const next = treninkQuery();
+      setChapterId(next.chapterId);
+      setLearn(next.learn);
+    };
     sync();
     return onUlohyLocation(sync);
   }, [pathname]);
 
   useEffect(() => {
     if (loading) return;
-    setShown({ pathname, chapterId });
-  }, [pathname, chapterId, loading]);
+    setShown({ pathname, chapterId, learn });
+  }, [pathname, chapterId, learn, loading]);
 
   const parts = ulohyParts(shown.pathname);
 
   if (parts[0] === "trenink") {
     return (
       <main className="flex min-h-0 flex-1 flex-col overflow-hidden">
-        <UlohyTreninkClient chapterId={shown.chapterId} />
+        <UlohyTreninkClient chapterId={shown.chapterId} learn={shown.learn} />
       </main>
     );
   }

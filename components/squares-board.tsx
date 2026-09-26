@@ -201,7 +201,11 @@ export const SquaresBoard = forwardRef<SquaresBoardHandle, SquaresBoardProps>(
         )}
         onContextMenu={(event) => event.preventDefault()}
       >
-        <BoardFrame orientation={orientation} className="h-full w-full">
+        <BoardFrame
+          orientation={orientation}
+          fen={fen}
+          className="h-full w-full"
+        >
           {ready ? (
             <Chessboard options={options} />
           ) : (

@@ -36,7 +36,7 @@ import { cn } from "@/lib/utils";
 import "chessground/assets/chessground.base.css";
 
 const MOVE_ANIMATION_MS = 200;
-const SNAP_BACK_MS = 520;
+const SNAP_BACK_MS = 1600;
 
 type ChessboardPlayerProps = {
   positionFen: string;
@@ -190,7 +190,11 @@ export const ChessboardPlayer = memo(function ChessboardPlayer({
       ? [playedMove.from as Key, playedMove.to as Key]
       : undefined;
     const api = apiRef.current;
-    const skipFen = Boolean(api && api.getFen() === nextBoard);
+    const skipFen = Boolean(
+      (api && api.getFen() === nextBoard) ||
+        revertingRef.current ||
+        incorrect,
+    );
 
     const patch = {
       ...(skipFen ? {} : { fen: positionFen }),
@@ -242,6 +246,7 @@ export const ChessboardPlayer = memo(function ChessboardPlayer({
     board,
     canMove,
     highlightCustom,
+    incorrect,
     orientation,
     playedMove,
     positionFen,
@@ -266,7 +271,11 @@ export const ChessboardPlayer = memo(function ChessboardPlayer({
       )}
       data-wrong={incorrect ? "true" : undefined}
     >
-      <BoardFrame orientation={orientation} className="h-full w-full">
+      <BoardFrame
+        orientation={orientation}
+        fen={positionFen}
+        className="h-full w-full"
+      >
         <style>{pieceCss}</style>
         <div ref={wrapRef} className="cg-board-host h-full w-full" />
       </BoardFrame>

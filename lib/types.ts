@@ -1,10 +1,11 @@
-import type { PuzzleMarkup } from "@/lib/markup";
+import type { BoardMarkup, PuzzleMarkup } from "@/lib/markup";
 
 export type PuzzleKind = "move" | "squares";
 
 export type WrongReply = {
   answer: string;
   text: string;
+  markup?: BoardMarkup;
 };
 
 export interface Puzzle {

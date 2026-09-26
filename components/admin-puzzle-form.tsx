@@ -11,6 +11,13 @@ import { PositionSetupBoard } from "@/components/position-setup-board";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  ADMIN_HISTORY_MAX,
+  puzzlesToDrop,
+  puzzlesToRestore,
+  takeSnapshot,
+  type AdminSnapshot,
+} from "@/lib/admin-history";
 import { fenAfterUci, isValidFen, normalizeUci, startFenForLine } from "@/lib/chess";
 import {
   DEMO_CURRICULUM,
@@ -22,8 +29,10 @@ import {
   type Curriculum,
 } from "@/lib/curriculum";
 import {
+  cloneBoardMarkup,
   clonePuzzleMarkup,
   emptyPuzzleMarkup,
+  isEmptyBoardMarkup,
   type Brush,
   type MarkupPhase,
 } from "@/lib/markup";
@@ -63,11 +72,16 @@ export function AdminPuzzleForm() {
   const [playTarget, setPlayTarget] = useState<"solution" | number | null>(
     null,
   );
-  const reopenPlayRef = useRef<number | null>(null);
   const [boardOpen, setBoardOpen] = useState(false);
   const [markupTool, setMarkupTool] = useState<SetupTool>("arrow");
   const [markupBrush, setMarkupBrush] = useState<Brush>("green");
   const [markupPhase, setMarkupPhase] = useState<MarkupPhase>("before");
+  const [historySize, setHistorySize] = useState(0);
+  const [undoLabel, setUndoLabel] = useState<string | null>(null);
+  const historyRef = useRef<AdminSnapshot<ReturnType<typeof emptyForm>>[]>([]);
+  const puzzlesRef = useRef(puzzles);
+  const undoBusy = useRef(false);
+  puzzlesRef.current = puzzles;
 
   async function refresh() {
     const [puzzleRes, curRes] = await Promise.all([
@@ -95,7 +109,40 @@ export function AdminPuzzleForm() {
     );
   }
 
-  async function persistCurriculum(next: Curriculum) {
+  function commitHistory(label: string) {
+    const next = [
+      ...historyRef.current,
+      takeSnapshot({
+        label,
+        curriculum,
+        puzzles,
+        courseId,
+        selectedChapterId,
+        form,
+      }),
+    ].slice(-ADMIN_HISTORY_MAX);
+    historyRef.current = next;
+    setHistorySize(next.length);
+    setUndoLabel(label);
+  }
+
+  function dropLastHistory(label: string) {
+    const last = historyRef.current.at(-1);
+    if (last?.label !== label) return;
+    historyRef.current = historyRef.current.slice(0, -1);
+    setHistorySize(historyRef.current.length);
+    setUndoLabel(historyRef.current.at(-1)?.label ?? null);
+  }
+
+  async function persistPuzzleDiffs(prev: Puzzle[], next: Puzzle[]) {
+    const changed = puzzlesToRestore(prev, next).filter((item) => isUuid(item.id));
+    await Promise.all(
+      changed.map((item) => persistPuzzle(item, item.chapterId ?? null, item.sort ?? 0)),
+    );
+  }
+
+  async function persistCurriculum(next: Curriculum, history?: string) {
+    if (history) commitHistory(history);
     setCurriculum(next);
     const res = await fetch("/api/curriculum", {
       method: "POST",
@@ -103,16 +150,69 @@ export function AdminPuzzleForm() {
       body: JSON.stringify(next),
     });
     if (!res.ok) {
+      if (history) dropLastHistory(history);
       const data = (await res.json()) as { error?: string };
       setStatus(data.error ?? "Osnovu nešlo uložit.");
-      return;
+      return false;
     }
     setStatus(null);
+    return true;
+  }
+
+  async function restoreSnapshot(snap: AdminSnapshot<ReturnType<typeof emptyForm>>) {
+    const currentPuzzles = puzzlesRef.current;
+    setCurriculum(snap.curriculum);
+    setPuzzles(snap.puzzles);
+    puzzlesRef.current = snap.puzzles;
+    setCourseId(snap.courseId);
+    setSelectedChapterId(snap.selectedChapterId);
+    setForm(snap.form);
+
+    const res = await fetch("/api/curriculum", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(snap.curriculum),
+    });
+    if (!res.ok) {
+      const data = (await res.json()) as { error?: string };
+      setStatus(data.error ?? "Zpět: osnovu nešlo uložit.");
+      return;
+    }
+
+    const drop = puzzlesToDrop(currentPuzzles, snap.puzzles).filter(isUuid);
+    if (drop.length) {
+      await fetch("/api/puzzles", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids: drop }),
+      });
+    }
+
+    await persistPuzzleDiffs(currentPuzzles, snap.puzzles);
+    setStatus(`Zpět: ${snap.label}`);
+  }
+
+  async function undoLast() {
+    if (undoBusy.current) return;
+    const snap = historyRef.current.at(-1);
+    if (!snap) return;
+    undoBusy.current = true;
+    historyRef.current = historyRef.current.slice(0, -1);
+    setHistorySize(historyRef.current.length);
+    setUndoLabel(historyRef.current.at(-1)?.label ?? null);
+    try {
+      await restoreSnapshot(snap);
+    } finally {
+      undoBusy.current = false;
+    }
   }
 
   async function onDeletePuzzles(ids: string[]) {
     const unique = Array.from(new Set(ids.filter(isUuid)));
     if (!unique.length) return;
+    commitHistory(
+      unique.length === 1 ? "Smazat úlohu" : `Smazat ${unique.length} úloh`,
+    );
     const res = await fetch("/api/puzzles", {
       method: "DELETE",
       headers: { "Content-Type": "application/json" },
@@ -120,18 +220,104 @@ export function AdminPuzzleForm() {
     });
     const data = (await res.json()) as { error?: string; deleted?: number };
     if (!res.ok) {
+      dropLastHistory(
+        unique.length === 1 ? "Smazat úlohu" : `Smazat ${unique.length} úloh`,
+      );
       setStatus(data.error ?? "Smazání selhalo.");
       return;
     }
     const drop = new Set(unique);
-    setPuzzles((current) => current.filter((item) => !drop.has(item.id)));
+    setPuzzles((current) => {
+      const next = current.filter((item) => !drop.has(item.id));
+      puzzlesRef.current = next;
+      return next;
+    });
     if (form.id && drop.has(form.id)) {
       setForm(emptyForm());
     }
-    setStatus(`Smazáno ${data.deleted ?? unique.length}.`);
+    setStatus(`Smazáno ${data.deleted ?? unique.length}. Ctrl+Z vrátí.`);
+  }
+
+  async function onDeleteSubtree(chapterIds: string[], label: string) {
+    const drop = new Set(chapterIds);
+    commitHistory(label);
+    const prev = puzzles;
+    const nextPuzzles = puzzles.map((item) =>
+      item.chapterId && drop.has(item.chapterId)
+        ? { ...item, chapterId: null }
+        : item,
+    );
+    const next = {
+      ...curriculum,
+      chapters: curriculum.chapters.filter((item) => !drop.has(item.id)),
+    };
+    setPuzzles(nextPuzzles);
+    puzzlesRef.current = nextPuzzles;
+    if (selectedChapterId && drop.has(selectedChapterId)) {
+      setSelectedChapterId(null);
+    }
+    const prevCurriculum = curriculum;
+    const prevChapter = selectedChapterId;
+    const ok = await persistCurriculum(next);
+    if (!ok) {
+      dropLastHistory(label);
+      setPuzzles(prev);
+      puzzlesRef.current = prev;
+      setCurriculum(prevCurriculum);
+      setSelectedChapterId(prevChapter);
+      return;
+    }
+    await persistPuzzleDiffs(prev, nextPuzzles);
+    setStatus(`${label}. Ctrl+Z vrátí.`);
+  }
+
+  async function onDeleteCourse(id: string) {
+    if (curriculum.courses.length <= 1) return;
+    const course = curriculum.courses.find((item) => item.id === id);
+    const label = `Smazat kurz „${course?.title ?? ""}“`;
+    const drop = new Set(
+      curriculum.chapters
+        .filter((item) => item.courseId === id)
+        .map((item) => item.id),
+    );
+    commitHistory(label);
+    const prev = puzzles;
+    const nextPuzzles = puzzles.map((item) =>
+      item.chapterId && drop.has(item.chapterId)
+        ? { ...item, chapterId: null }
+        : item,
+    );
+    const nextCourses = curriculum.courses.filter((item) => item.id !== id);
+    const next = {
+      ...curriculum,
+      courses: nextCourses,
+      chapters: curriculum.chapters.filter((item) => item.courseId !== id),
+    };
+    setPuzzles(nextPuzzles);
+    puzzlesRef.current = nextPuzzles;
+    if (courseId === id) setCourseId(nextCourses[0]?.id ?? "");
+    if (selectedChapterId && drop.has(selectedChapterId)) {
+      setSelectedChapterId(null);
+    }
+    const prevCurriculum = curriculum;
+    const prevCourse = courseId;
+    const prevChapter = selectedChapterId;
+    const ok = await persistCurriculum(next);
+    if (!ok) {
+      dropLastHistory(label);
+      setPuzzles(prev);
+      puzzlesRef.current = prev;
+      setCurriculum(prevCurriculum);
+      setCourseId(prevCourse);
+      setSelectedChapterId(prevChapter);
+      return;
+    }
+    await persistPuzzleDiffs(prev, nextPuzzles);
+    setStatus(`${label}. Ctrl+Z vrátí.`);
   }
 
   async function renamePuzzleTitle(puzzle: Puzzle, title: string) {
+    commitHistory(`Přejmenovat „${puzzle.title}“`);
     const next = { ...puzzle, title };
     setPuzzles((current) =>
       current.map((item) => (item.id === puzzle.id ? next : item)),
@@ -162,6 +348,7 @@ export function AdminPuzzleForm() {
   ) {
     const puzzle = puzzles.find((item) => item.id === puzzleId);
     if (!puzzle) return;
+    commitHistory("Přesun úlohy");
     const siblings = puzzles
       .filter((item) => (item.chapterId ?? null) === chapterId && item.id !== puzzleId)
       .sort((a, b) => (a.sort ?? 0) - (b.sort ?? 0));
@@ -198,6 +385,11 @@ export function AdminPuzzleForm() {
     function onKey(event: KeyboardEvent) {
       const target = event.target as HTMLElement | null;
       if (target?.closest("input, textarea, select")) return;
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "z" && !event.shiftKey) {
+        event.preventDefault();
+        void undoLast();
+        return;
+      }
       if (playTarget !== null) return;
       if (event.key === "ArrowLeft") {
         event.preventDefault();
@@ -227,7 +419,10 @@ export function AdminPuzzleForm() {
       explanation: puzzle.explanation ?? "",
       videoUrl: puzzle.videoUrl ?? "",
       wrongReplies: puzzle.wrongReplies?.length
-        ? puzzle.wrongReplies.map((reply) => ({ ...reply }))
+        ? puzzle.wrongReplies.map((reply) => ({
+            ...reply,
+            markup: reply.markup ? cloneBoardMarkup(reply.markup) : undefined,
+          }))
         : [],
       markup: clonePuzzleMarkup(puzzle.markup),
       chapterId: puzzle.chapterId ?? null,
@@ -245,17 +440,8 @@ export function AdminPuzzleForm() {
     setForm({ ...form, squares: [...set].join(" ") });
   }
 
-  function addWrongGroup() {
-    const index = form.wrongReplies.length;
-    setForm({
-      ...form,
-      wrongReplies: [...form.wrongReplies, { answer: "", text: "" }],
-    });
-    if (form.kind === "move" && isValidFen(form.fen)) setPlayTarget(index);
-  }
-
-  function addWrongMove(sourceIndex: number) {
-    const text = form.wrongReplies[sourceIndex]?.text ?? "";
+  function addWrongReply() {
+    const text = form.wrongReplies.at(-1)?.text ?? "";
     const index = form.wrongReplies.length;
     setForm({
       ...form,
@@ -268,6 +454,8 @@ export function AdminPuzzleForm() {
     event.preventDefault();
     setSaving(true);
     setStatus(null);
+    const saveLabel = isUuid(form.id) ? `Uložit „${form.title}“` : "Nová úloha";
+    commitHistory(saveLabel);
 
     const payload = {
       id: isUuid(form.id) ? form.id : undefined,
@@ -306,6 +494,7 @@ export function AdminPuzzleForm() {
     setSaving(false);
 
     if (!res.ok) {
+      dropLastHistory(saveLabel);
       setStatus(data.error ?? "Uložení selhalo.");
       return;
     }
@@ -335,6 +524,7 @@ export function AdminPuzzleForm() {
         </summary>
       <div className="max-h-[40vh] overflow-y-auto px-1 pb-1">
       <PgnImportCard
+        onBeforeImport={() => commitHistory("Import PGN")}
         onImported={refresh}
         curriculum={curriculum}
         puzzles={puzzles}
@@ -366,7 +556,7 @@ export function AdminPuzzleForm() {
                 );
               }}
               onSelectPuzzle={loadPuzzle}
-              onCurriculum={(next) => void persistCurriculum(next)}
+              onCurriculum={(next, label) => void persistCurriculum(next, label)}
               onMovePuzzle={(puzzleId, chapterId, beforeId) =>
                 void onMovePuzzle(puzzleId, chapterId, beforeId)
               }
@@ -376,7 +566,12 @@ export function AdminPuzzleForm() {
                 setStatus(null);
               }}
               onDeletePuzzles={(ids) => void onDeletePuzzles(ids)}
+              onDeleteSubtree={(ids, label) => void onDeleteSubtree(ids, label)}
+              onDeleteCourse={(id) => void onDeleteCourse(id)}
               onRenamePuzzle={(puzzle, title) => void renamePuzzleTitle(puzzle, title)}
+              onUndo={() => void undoLast()}
+              canUndo={historySize > 0}
+              undoLabel={undoLabel}
             />
         </div>
         <form
@@ -422,73 +617,6 @@ export function AdminPuzzleForm() {
                       setForm({ ...form, explanation: e.target.value })
                     }
                   />
-                  {groupWrongReplies(form.wrongReplies).map((group) => (
-                    <div key={group.indices.join("-")} className="grid shrink-0 gap-0.5">
-                      <div className="flex flex-wrap items-center gap-0.5">
-                        {group.indices.map((replyIndex) => {
-                          const reply = form.wrongReplies[replyIndex];
-                          if (!reply) return null;
-                          return (
-                            <span
-                              key={replyIndex}
-                              className="inline-flex items-center gap-0.5 rounded bg-muted px-1 py-0 text-[10px]"
-                            >
-                              {reply.answer || "…"}
-                              <button
-                                type="button"
-                                className="text-muted-foreground hover:text-foreground"
-                                onClick={() =>
-                                  setForm({
-                                    ...form,
-                                    wrongReplies: form.wrongReplies.filter(
-                                      (_, index) => index !== replyIndex,
-                                    ),
-                                  })
-                                }
-                              >
-                                ×
-                              </button>
-                            </span>
-                          );
-                        })}
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          className="h-5 px-1.5 text-[10px]"
-                          disabled={!isValidFen(form.fen)}
-                          onClick={() => addWrongMove(group.indices[0] ?? 0)}
-                        >
-                          + tah
-                        </Button>
-                      </div>
-                      <Input
-                        className="h-6 px-1.5 text-xs"
-                        placeholder="Proč špatně (pro všechny tahy)"
-                        value={group.text}
-                        onChange={(event) => {
-                          const text = event.target.value;
-                          setForm({
-                            ...form,
-                            wrongReplies: form.wrongReplies.map((reply, index) =>
-                              group.indices.includes(index)
-                                ? { ...reply, text }
-                                : reply,
-                            ),
-                          });
-                        }}
-                      />
-                    </div>
-                  ))}
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    className="mt-0.5 h-6 shrink-0 px-2 text-[11px]"
-                    onClick={addWrongGroup}
-                  >
-                    + špatná
-                  </Button>
               </div>
                 <div className="flex h-full min-w-0 flex-1 flex-col overflow-hidden px-2 py-1">
                   <div className="flex shrink-0 flex-col gap-1">
@@ -506,7 +634,11 @@ export function AdminPuzzleForm() {
                     <button
                       type="button"
                       className={`rounded px-1.5 py-0.5 text-[11px] ${markupTool === "piece" ? "bg-[#81b64c] text-zinc-950" : "bg-muted"}`}
-                      onClick={() => setMarkupTool("piece")}
+                      onClick={() =>
+                        setMarkupTool((current) =>
+                          current === "piece" ? "arrow" : "piece",
+                        )
+                      }
                     >
                       Upravit pozici
                     </button>
@@ -649,12 +781,79 @@ export function AdminPuzzleForm() {
                 </div>
                 <Textarea
                   id="hint"
-                  rows={4}
-                  className="min-h-[4rem] flex-1 resize-none px-2 py-1.5 text-sm"
+                  rows={3}
+                  className="min-h-[3rem] resize-none px-2 py-1.5 text-sm"
                   placeholder="Zadání"
                   value={form.hint}
                   onChange={(e) => setForm({ ...form, hint: e.target.value })}
                 />
+                <div className="flex min-h-0 flex-1 flex-col gap-1">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-xs text-muted-foreground">Špatné tahy</span>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-7 px-2 text-xs"
+                      disabled={!isValidFen(form.fen)}
+                      onClick={addWrongReply}
+                    >
+                      + tah
+                    </Button>
+                  </div>
+                  <div className="min-h-0 flex-1 space-y-1 overflow-y-auto">
+                    {form.wrongReplies.map((reply, index) => (
+                      <div key={index} className="flex items-center gap-1">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="h-8 w-[5.5rem] shrink-0 px-1 font-mono text-xs"
+                          disabled={!isValidFen(form.fen)}
+                          onClick={() => setPlayTarget(index)}
+                        >
+                          {reply.answer || "Zahrát"}
+                        </Button>
+                        {reply.markup && !isEmptyBoardMarkup(reply.markup) ? (
+                          <span
+                            className="shrink-0 text-[10px] text-red-500"
+                            title="Červené šipky"
+                          >
+                            →{reply.markup.arrows.length}
+                          </span>
+                        ) : null}
+                        <Input
+                          className="h-8 px-2 text-sm"
+                          placeholder="Text (volitelně)"
+                          value={reply.text}
+                          onChange={(event) => {
+                            const text = event.target.value;
+                            setForm({
+                              ...form,
+                              wrongReplies: form.wrongReplies.map((item, itemIndex) =>
+                                itemIndex === index ? { ...item, text } : item,
+                              ),
+                            });
+                          }}
+                        />
+                        <button
+                          type="button"
+                          className="shrink-0 px-1 text-muted-foreground hover:text-foreground"
+                          onClick={() =>
+                            setForm({
+                              ...form,
+                              wrongReplies: form.wrongReplies.filter(
+                                (_, itemIndex) => itemIndex !== index,
+                              ),
+                            })
+                          }
+                        >
+                          ×
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
                   </div>
               </div>
             </form>
@@ -676,14 +875,17 @@ export function AdminPuzzleForm() {
         fen={startFenForLine(form.fen, form.move ? [form.move] : [])}
         open={playTarget !== null}
         title={
-          playTarget === "solution" ? "Zahrát řešení" : "Zahrát špatný tah"
+          playTarget === "solution" ? "Zahrát řešení" : "Špatný tah + proč"
         }
-        onClose={() => {
-          const next = reopenPlayRef.current;
-          reopenPlayRef.current = null;
-          setPlayTarget(next);
-        }}
-        onPick={(uci) => {
+        explain={typeof playTarget === "number"}
+        instanceKey={String(playTarget)}
+        initialMarkup={
+          typeof playTarget === "number"
+            ? form.wrongReplies[playTarget]?.markup
+            : undefined
+        }
+        onClose={() => setPlayTarget(null)}
+        onPick={(uci, markup) => {
           if (playTarget === "solution") {
             setForm((current) => ({ ...current, move: uci }));
             return;
@@ -694,9 +896,7 @@ export function AdminPuzzleForm() {
               const next = [...current.wrongReplies];
               const row = next[index];
               if (!row) return current;
-              next[index] = { ...row, answer: uci };
-              next.push({ answer: "", text: row.text });
-              reopenPlayRef.current = next.length - 1;
+              next[index] = { ...row, answer: uci, markup };
               return { ...current, wrongReplies: next };
             });
           }
@@ -704,24 +904,6 @@ export function AdminPuzzleForm() {
       />
     </div>
   );
-}
-
-function groupWrongReplies(replies: { answer: string; text: string }[]) {
-  const groups: { text: string; indices: number[] }[] = [];
-  const byText = new Map<string, number>();
-  replies.forEach((reply, index) => {
-    const key = reply.text.trim();
-    if (key) {
-      const existing = byText.get(key);
-      if (existing !== undefined) {
-        groups[existing].indices.push(index);
-        return;
-      }
-      byText.set(key, groups.length);
-    }
-    groups.push({ text: reply.text, indices: [index] });
-  });
-  return groups;
 }
 
 function chapterOptions(curriculum: Curriculum, courseId: string) {

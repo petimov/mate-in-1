@@ -107,7 +107,7 @@ export function PositionSetupBoard({
   const turn = fenTurn(displayFen);
   const valid = isValidFen(displayFen);
   const layer = markup;
-  const markupOn = Boolean(onMarkupChange && tool !== "piece" && !spare);
+  const canMarkup = Boolean(onMarkupChange && !spare);
 
   const squareStyles = useMemo(() => {
     const extra: Record<string, CSSProperties> = {
@@ -132,21 +132,9 @@ export function PositionSetupBoard({
     [brush, layer, onMarkupChange],
   );
 
-  const applyMarkup = useCallback(
+  const applyPointMarkup = useCallback(
     (square: string) => {
       if (!layer || !onMarkupChange) return;
-      if (tool === "arrow") {
-        if (!arrowFrom) {
-          setArrowFrom(square);
-          return;
-        }
-        if (arrowFrom === square) {
-          setArrowFrom(null);
-          return;
-        }
-        addArrow(arrowFrom, square);
-        return;
-      }
       const next = cloneBoardMarkup(layer);
       if (tool === "color") {
         next.colors = toggleBrushOnSquare(next.colors, square, brush);
@@ -155,7 +143,7 @@ export function PositionSetupBoard({
       }
       onMarkupChange(next);
     },
-    [addArrow, arrowFrom, brush, layer, onMarkupChange, tool],
+    [brush, layer, onMarkupChange, tool],
   );
 
   const onSquareClick = useCallback(
@@ -168,40 +156,48 @@ export function PositionSetupBoard({
         onChange(setFenPiece(displayFen, square, spare));
         return;
       }
-      if (markupOn) {
-        applyMarkup(square);
-        return;
-      }
       onToggleSquare?.(square);
     },
-    [applyMarkup, displayFen, markupOn, onChange, onToggleSquare, spare],
+    [displayFen, onChange, onToggleSquare, spare],
   );
 
   const onSquareRightClick = useCallback(
     ({ square }: SquareHandlerArgs) => {
+      if (skipClickRef.current) {
+        skipClickRef.current = false;
+        return;
+      }
+      if (canMarkup) {
+        applyPointMarkup(square);
+        return;
+      }
       onChange(setFenPiece(displayFen, square, null));
     },
-    [displayFen, onChange],
+    [applyPointMarkup, canMarkup, displayFen, onChange],
   );
 
   const onSquareMouseDown = useCallback(
     ({ square }: SquareHandlerArgs, event: MouseEvent) => {
-      if (event.button !== 0 || !markupOn || tool !== "arrow") return;
+      if (event.button !== 2 || !canMarkup) return;
       arrowFromRef.current = square;
       setArrowFrom(square);
     },
-    [markupOn, tool],
+    [canMarkup],
   );
 
   const onSquareMouseUp = useCallback(
     ({ square }: SquareHandlerArgs, event: MouseEvent) => {
-      if (event.button !== 0 || !markupOn || tool !== "arrow") return;
+      if (event.button !== 2 || !canMarkup) return;
       const from = arrowFromRef.current;
-      if (!from || from === square) return;
-      skipClickRef.current = true;
-      addArrow(from, square);
+      if (from && from !== square) {
+        skipClickRef.current = true;
+        addArrow(from, square);
+        return;
+      }
+      arrowFromRef.current = null;
+      setArrowFrom(null);
     },
-    [addArrow, markupOn, tool],
+    [addArrow, canMarkup],
   );
 
   const onPieceDrop = useCallback(
@@ -243,7 +239,7 @@ export function PositionSetupBoard({
       id: boardId,
       position: displayFen,
       pieces,
-      allowDragging: !markupOn,
+      allowDragging: !spare,
       allowDragOffBoard: true,
       allowDrawingArrows: false,
       showAnimations: false,
@@ -264,7 +260,7 @@ export function PositionSetupBoard({
       boardId,
       displayFen,
       layer,
-      markupOn,
+      spare,
       onPieceDrop,
       onSquareClick,
       onSquareMouseDown,
@@ -297,7 +293,7 @@ export function PositionSetupBoard({
               : { height: "100%", aspectRatio: "1", maxWidth: "100%" }
           }
         >
-          <BoardFrame className="h-full w-full">
+          <BoardFrame fen={displayFen} className="h-full w-full">
             <Chessboard key={`${board.id}-${boardId}`} options={options} />
           </BoardFrame>
         </div>

@@ -59,6 +59,12 @@ export function safeChess(fen: string): Chess | null {
   }
 }
 
+export function sideToMoveDot(fen: string): "w" | "b" | null {
+  const game = safeChess(fen);
+  if (game?.isCheckmate()) return null;
+  return fen.trim().split(/\s+/)[1] === "b" ? "b" : "w";
+}
+
 export function dropToUci(
   sourceSquare: string,
   targetSquare: string,
