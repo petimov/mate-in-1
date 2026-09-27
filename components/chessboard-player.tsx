@@ -100,8 +100,12 @@ export const ChessboardPlayer = memo(function ChessboardPlayer({
   const canMove = interactive && !incorrect;
 
   const shapes = useMemo(
-    () => toChessgroundShapes(markup) as DrawShape[],
-    [markup],
+    () =>
+      toChessgroundShapes(markup, {
+        fen: positionFen,
+        uci: expectedUci,
+      }) as DrawShape[],
+    [expectedUci, markup, positionFen],
   );
   const highlightCustom = useMemo(() => {
     const map = new Map<Key, string>();

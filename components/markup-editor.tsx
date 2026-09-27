@@ -346,7 +346,9 @@ export function MarkupEditor({
                 orientation={orientation}
                 fen={displayFen}
                 arrows={
-                  boardMode === "markup" ? toChessboardArrows(layer) : []
+                  boardMode === "markup"
+                    ? toChessboardArrows(layer, { fen: displayFen, uci: move })
+                    : []
                 }
                 className="h-full w-full"
               >

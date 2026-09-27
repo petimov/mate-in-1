@@ -29,8 +29,8 @@ const Chessboard = dynamic(
   { ssr: false },
 );
 
-const WHITE_TRAY = ["wK", "wQ", "wR", "wB", "wN", "wP"] as const;
-const BLACK_TRAY = ["bK", "bQ", "bR", "bB", "bN", "bP"] as const;
+const WHITE_TRAY = ["wQ", "wR", "wB", "wN", "wP", "wK"] as const;
+const BLACK_TRAY = ["bQ", "bR", "bB", "bN", "bP", "bK"] as const;
 
 type PositionEditorDialogProps = {
   fen: string;

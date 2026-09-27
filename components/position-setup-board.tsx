@@ -57,8 +57,8 @@ const Chessboard = dynamic(
   { ssr: false },
 );
 
-const WHITE_TRAY = ["wK", "wQ", "wR", "wB", "wN", "wP"] as const;
-const BLACK_TRAY = ["bK", "bQ", "bR", "bB", "bN", "bP"] as const;
+const WHITE_TRAY = ["wQ", "wR", "wB", "wN", "wP", "wK"] as const;
+const BLACK_TRAY = ["bQ", "bR", "bB", "bN", "bP", "bK"] as const;
 const MARKED: CSSProperties = { backgroundColor: "rgba(212, 160, 23, 0.55)" };
 
 type PositionSetupBoardProps = {
@@ -76,6 +76,7 @@ type PositionSetupBoardProps = {
   playMode?: boolean;
   moveLocked?: boolean;
   onPlayMove?: (uci: string) => void;
+  topArrowUci?: string;
 };
 
 export function PositionSetupBoard({
@@ -93,6 +94,7 @@ export function PositionSetupBoard({
   playMode = false,
   moveLocked = false,
   onPlayMove,
+  topArrowUci,
 }: PositionSetupBoardProps) {
   const { board, pieces } = useBoardAppearance();
   const rootRef = useRef<HTMLDivElement>(null);
@@ -403,7 +405,10 @@ export function PositionSetupBoard({
           <BoardFrame
             orientation={orientation}
             fen={displayFen}
-            arrows={toChessboardArrows(layer)}
+            arrows={toChessboardArrows(layer, {
+              fen: displayFen,
+              uci: topArrowUci,
+            })}
             className="h-full w-full"
           >
             <Chessboard key={`${board.id}-${boardId}-${orientation}`} options={options} />

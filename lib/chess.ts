@@ -153,6 +153,28 @@ export function buildLine(startFen: string, ucis: string[]): LineReplay {
   return { fens, plies, lastMoves };
 }
 
+export function checkingSquares(fen: string): string[] {
+  const chess = safeChess(fen);
+  if (!chess || !chess.isCheck()) return [];
+  const attacker = chess.turn() === "w" ? "b" : "w";
+  const pieces: Square[] = [];
+  for (const row of chess.board()) {
+    for (const cell of row) {
+      if (cell && cell.color === attacker) pieces.push(cell.square);
+    }
+  }
+  const checkers: string[] = [];
+  for (const square of pieces) {
+    const clone = safeChess(fen);
+    if (!clone) continue;
+    for (const other of pieces) {
+      if (other !== square) clone.remove(other);
+    }
+    if (clone.isCheck()) checkers.push(square);
+  }
+  return checkers;
+}
+
 export function fenAfterUci(fen: string, uci: string): string | null {
   const chess = safeChess(fen);
   if (!chess) return null;

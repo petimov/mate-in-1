@@ -2,6 +2,7 @@
 
 import {
   useEffect,
+  useRef,
   useState,
   type DragEvent,
   type MouseEvent,
@@ -87,12 +88,33 @@ export function CurriculumTree({
   const [newCourse, setNewCourse] = useState("");
   const [newChapter, setNewChapter] = useState("");
   const [open, setOpen] = useState<Record<string, boolean>>({});
+  const openInit = useRef(false);
   const [renameId, setRenameId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
   const [renameCourseId, setRenameCourseId] = useState<string | null>(null);
   const [renameCourseValue, setRenameCourseValue] = useState("");
   const [dropChapterId, setDropChapterId] = useState<string | null>(null);
   const [selected, setSelected] = useState<string[]>([]);
+
+  useEffect(() => {
+    const ids = curriculum.chapters.map((item) => item.id);
+    if (!ids.length) return;
+    setOpen((current) => {
+      if (!openInit.current) {
+        openInit.current = true;
+        return Object.fromEntries(ids.map((id) => [id, true]));
+      }
+      const next = { ...current };
+      let changed = false;
+      for (const id of ids) {
+        if (!(id in next)) {
+          next[id] = true;
+          changed = true;
+        }
+      }
+      return changed ? next : current;
+    });
+  }, [curriculum.chapters]);
 
   const courses = sortCourses(curriculum.courses);
   const course = courses.find((item) => item.id === courseId) ?? courses[0];
@@ -466,8 +488,8 @@ export function CurriculumTree({
             className={cn(
               "flex items-center gap-0.5 rounded pl-1",
               item.id === course?.id
-                ? "bg-[#81b64c] text-zinc-950"
-                : "bg-muted text-muted-foreground",
+                ? "bg-[#00d26a] text-black"
+                : "bg-transparent text-muted-foreground",
             )}
           >
             {renameCourseId === item.id ? (
@@ -904,7 +926,8 @@ function ChapterNode({
               depth={depth + 1}
             />
           ))}
-          {items.map((puzzle) => (
+          {selectedChapterId === chapter.id
+            ? items.map((puzzle) => (
             <PuzzleRow
               key={puzzle.id}
               puzzle={puzzle}
@@ -927,7 +950,8 @@ function ChapterNode({
               onDelete={() => onDeletePuzzle(puzzle)}
               depth={depth + 1}
             />
-          ))}
+          ))
+            : null}
         </div>
       ) : null}
     </div>

@@ -422,7 +422,7 @@ function PlayMoveBoard({
       <BoardFrame
         orientation={orientation}
         fen={position}
-        arrows={toChessboardArrows(layer)}
+        arrows={toChessboardArrows(layer, { fen: position, uci: answer })}
         className="aspect-square w-full"
       >
         <div

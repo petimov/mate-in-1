@@ -262,25 +262,19 @@ export function ChapterCatalog({
         </div>
         <div className="flex shrink-0 flex-wrap gap-2">
           {learnHref ? (
-            <Button
-              asChild
-              className="bg-[#81b64c] text-zinc-950 hover:bg-[#72a642]"
-            >
+            <Button asChild className="bg-[#00d26a] text-black hover:bg-[#00b85c]">
               <Link href={learnHref}>
                 <BookOpen className="size-4" />
                 Studovat
               </Link>
             </Button>
           ) : (
-            <Button
-              disabled
-              className="bg-[#81b64c] text-zinc-950 hover:bg-[#72a642]"
-            >
+            <Button disabled className="bg-[#00d26a] text-black hover:bg-[#00b85c]">
               <BookOpen className="size-4" />
               Studovat
             </Button>
           )}
-          <Button asChild variant="outline">
+          <Button asChild className="bg-[#00d26a] text-black hover:bg-[#00b85c]">
             <Link href={user ? reviewHref : reviewLoginHref}>
               <RotateCcw className="size-4" />
               Opakovat

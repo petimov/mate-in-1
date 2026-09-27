@@ -1,3 +1,5 @@
+import { checkingSquares } from "@/lib/chess";
+
 export const BRUSHES = [
   "green",
   "red",
@@ -58,33 +60,33 @@ function hexRgba(hex: string, alpha: number): string {
 }
 
 export const BRUSH_HEX: Record<Brush, string> = {
-  green: "#4dcc5a",
-  red: "#d94a4a",
-  yellow: "#e6b422",
-  blue: "#4f8ad8",
-  teal: "#2bb5a0",
-  violet: "#8b6fd4",
-  rose: "#e86b8a",
-  orange: "#ef7d3b",
-  sky: "#5ec4e0",
-  olive: "#8fb03e",
-  brown: "#8a4f24",
-  black: "#1f1f1f",
+  green: "#00ff22",
+  red: "#ff0033",
+  yellow: "#ffe600",
+  blue: "#0044ff",
+  teal: "#00ffd0",
+  violet: "#d400ff",
+  rose: "#ff0077",
+  orange: "#ff3d00",
+  sky: "#00c8ff",
+  olive: "#b6ff00",
+  brown: "#ff6a00",
+  black: "#000000",
 };
 
 export const BRUSH_FILL: Record<Brush, string> = {
-  green: hexRgba(BRUSH_HEX.green, 0.5),
-  red: hexRgba(BRUSH_HEX.red, 0.5),
-  yellow: hexRgba(BRUSH_HEX.yellow, 0.48),
-  blue: hexRgba(BRUSH_HEX.blue, 0.48),
-  teal: hexRgba(BRUSH_HEX.teal, 0.48),
-  violet: hexRgba(BRUSH_HEX.violet, 0.48),
-  rose: hexRgba(BRUSH_HEX.rose, 0.48),
-  orange: hexRgba(BRUSH_HEX.orange, 0.48),
-  sky: hexRgba(BRUSH_HEX.sky, 0.48),
-  olive: hexRgba(BRUSH_HEX.olive, 0.48),
-  brown: hexRgba(BRUSH_HEX.brown, 0.5),
-  black: hexRgba(BRUSH_HEX.black, 0.42),
+  green: hexRgba(BRUSH_HEX.green, 0.72),
+  red: hexRgba(BRUSH_HEX.red, 0.72),
+  yellow: hexRgba(BRUSH_HEX.yellow, 0.7),
+  blue: hexRgba(BRUSH_HEX.blue, 0.7),
+  teal: hexRgba(BRUSH_HEX.teal, 0.7),
+  violet: hexRgba(BRUSH_HEX.violet, 0.7),
+  rose: hexRgba(BRUSH_HEX.rose, 0.7),
+  orange: hexRgba(BRUSH_HEX.orange, 0.7),
+  sky: hexRgba(BRUSH_HEX.sky, 0.7),
+  olive: hexRgba(BRUSH_HEX.olive, 0.7),
+  brown: hexRgba(BRUSH_HEX.brown, 0.72),
+  black: hexRgba(BRUSH_HEX.black, 0.62),
 };
 
 export const BRUSH_LABEL: Record<Brush, string> = {
@@ -117,13 +119,13 @@ export const MARKUP_ARROW_OPTIONS = {
   sameTargetArrowLengthReducerDenominator: 5,
   arrowWidthDenominator: 7,
   activeArrowWidthMultiplier: 1,
-  opacity: 0.88,
-  activeOpacity: 0.62,
+  opacity: 1,
+  activeOpacity: 0.92,
   arrowStartOffset: 0.28,
 };
 
 function chessgroundBrush(id: Brush) {
-  return { key: id, color: BRUSH_HEX[id], opacity: 0.88, lineWidth: 8.5 };
+  return { key: id, color: BRUSH_HEX[id], opacity: 1, lineWidth: 8.5 };
 }
 
 export function chessgroundBrushes() {
@@ -199,7 +201,55 @@ export function visibleMarkup(
   return layer ?? EMPTY_BOARD_MARKUP;
 }
 
-export function toChessgroundShapes(markup?: BoardMarkup | null) {
+export type ArrowTop = {
+  fen?: string | null;
+  uci?: string | null;
+};
+
+function topMoveKey(uci?: string | null) {
+  const move = (uci ?? "").trim().toLowerCase();
+  if (move.length < 4) return null;
+  return `${move.slice(0, 2)}${move.slice(2, 4)}`;
+}
+
+function isTopMove(from: string, to: string, uci?: string | null) {
+  return topMoveKey(uci) === `${from}${to}`;
+}
+
+function normalizeTop(top?: ArrowTop | string | null): ArrowTop {
+  if (typeof top === "string") return { uci: top };
+  return top ?? {};
+}
+
+function arrowsForDraw(
+  arrows: MarkupArrow[],
+  top?: ArrowTop | string | null,
+) {
+  const opts = normalizeTop(top);
+  const movedTo = topMoveKey(opts.uci)?.slice(2, 4) ?? "";
+  let checkers: string[] = [];
+  if (opts.fen) {
+    checkers = checkingSquares(opts.fen);
+  }
+  const checkSet = new Set(checkers);
+  if (!opts.uci && checkSet.size === 0) return arrows;
+
+  const rest: MarkupArrow[] = [];
+  const move: MarkupArrow[] = [];
+  const mate: MarkupArrow[] = [];
+  for (const arrow of arrows) {
+    if (checkSet.has(arrow.from) && arrow.from !== movedTo) mate.push(arrow);
+    else if (checkSet.has(arrow.from) || isTopMove(arrow.from, arrow.to, opts.uci)) {
+      move.push(arrow);
+    } else rest.push(arrow);
+  }
+  return [...rest, ...move, ...mate];
+}
+
+export function toChessgroundShapes(
+  markup?: BoardMarkup | null,
+  top?: ArrowTop | string | null,
+) {
   const shapes: {
     orig: string;
     dest?: string;
@@ -210,7 +260,7 @@ export function toChessgroundShapes(markup?: BoardMarkup | null) {
   for (const [square, brush] of Object.entries(markup.circles)) {
     shapes.push({ orig: square, brush });
   }
-  for (const arrow of markup.arrows) {
+  for (const arrow of arrowsForDraw(markup.arrows, top)) {
     shapes.push({
       orig: arrow.from,
       dest: arrow.to,
@@ -221,8 +271,11 @@ export function toChessgroundShapes(markup?: BoardMarkup | null) {
   return shapes;
 }
 
-export function toChessboardArrows(markup?: BoardMarkup | null) {
-  return (markup?.arrows ?? []).map((arrow) => ({
+export function toChessboardArrows(
+  markup?: BoardMarkup | null,
+  top?: ArrowTop | string | null,
+) {
+  return arrowsForDraw(markup?.arrows ?? [], top).map((arrow) => ({
     startSquare: arrow.from,
     endSquare: arrow.to,
     color: BRUSH_HEX[arrow.color] ?? BRUSH_HEX.green,

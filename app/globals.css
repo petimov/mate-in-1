@@ -149,8 +149,8 @@ body {
   align-items: center;
   padding: 9px 16px;
   border-radius: 4px;
-  background: #b36a3c;
-  color: #fff;
+  background: #00d26a;
+  color: #000;
   font-size: 12px;
   font-weight: 800;
   line-height: 1;
@@ -158,8 +158,8 @@ body {
 }
 
 .home-nav-btn:hover {
-  background: #8f542e;
-  color: #fff;
+  background: #00b85c;
+  color: #000;
 }
 
 .home-nav-account {
@@ -251,8 +251,8 @@ body {
   align-items: center;
   padding: 11px 23px;
   border-radius: 4px;
-  background: #b36a3c;
-  color: #fff;
+  background: #00d26a;
+  color: #000;
   font-size: 13px;
   font-weight: 800;
   line-height: 16px;
@@ -260,8 +260,8 @@ body {
 }
 
 .home-btn:hover {
-  background: #8f542e;
-  color: #fff;
+  background: #00b85c;
+  color: #000;
 }
 
 .home-how {
@@ -1178,7 +1178,28 @@ a.home-card:hover h3 {
   border: max(3px, 0.35vw) solid var(--cb-circle);
   border-radius: 50%;
   background: none;
-  opacity: 0.70;
+  opacity: 1;
+}
+
+html.admin-theme,
+html.admin-theme.dark {
+  --background: #ffffff;
+  --foreground: #000000;
+  --card: #ffffff;
+  --card-foreground: #000000;
+  --secondary: #f4f4f5;
+  --secondary-foreground: #000000;
+  --muted: #f4f4f5;
+  --muted-foreground: #000000;
+  --accent: #f4f4f5;
+  --accent-foreground: #000000;
+  --header: #ffffff;
+  --panel: #fafafa;
+  --border: #e5e5e5;
+  --input: #e5e5e5;
+  --primary: #00d26a;
+  --primary-foreground: #000000;
+  --ring: #00d26a;
 }
 
 html.admin-theme,

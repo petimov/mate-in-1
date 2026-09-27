@@ -19,6 +19,11 @@ import {
   type AdminSnapshot,
 } from "@/lib/admin-history";
 import {
+  readAdminStepReset,
+  writeAdminStepReset,
+  type AdminStepReset,
+} from "@/lib/admin-prefs";
+import {
   fenAfterUci,
   isValidFen,
   normalizeUci,
@@ -54,6 +59,7 @@ import {
 import { isUuid, puzzleKind, puzzleToSaveBody } from "@/lib/puzzles";
 import { parseSquares } from "@/lib/squares";
 import type { Puzzle, PuzzleKind, WrongReply } from "@/lib/types";
+import { cn } from "@/lib/utils";
 
 function emptyForm() {
   return {
@@ -90,6 +96,7 @@ export function AdminPuzzleForm() {
   const [markupTool, setMarkupTool] = useState<SetupTool>("arrow");
   const [markupBrush, setMarkupBrush] = useState<Brush>("green");
   const [markupPhase, setMarkupPhase] = useState<MarkupPhase>("before");
+  const [stepReset, setStepReset] = useState<AdminStepReset>("keep");
   const [historySize, setHistorySize] = useState(0);
   const [undoLabel, setUndoLabel] = useState<string | null>(null);
   const historyRef = useRef<AdminSnapshot<ReturnType<typeof emptyForm>>[]>([]);
@@ -396,6 +403,10 @@ export function AdminPuzzleForm() {
   }, []);
 
   useEffect(() => {
+    setStepReset(readAdminStepReset());
+  }, []);
+
+  useEffect(() => {
     function onKey(event: KeyboardEvent) {
       const target = event.target as HTMLElement | null;
       if (target?.closest("input, textarea, select")) return;
@@ -459,6 +470,7 @@ export function AdminPuzzleForm() {
     setSelectedChapterId(puzzle.chapterId ?? null);
     setWrongEdit(null);
     setStatus(null);
+    if (stepReset === "before") setMarkupPhase("before");
   }
 
   function toggleSquare(square: string) {
@@ -660,6 +672,11 @@ export function AdminPuzzleForm() {
                         : undefined
                     }
                     markup={markupLayer}
+                    topArrowUci={
+                      previewingWrong
+                        ? (editingReply?.answer ?? "")
+                        : solutionUci
+                    }
                     onMarkupChange={(layer) =>
                       setForm((current) => {
                         if (wrongEdit !== null) {
@@ -702,9 +719,10 @@ export function AdminPuzzleForm() {
                     ) : null}
                   </div>
                   <div className="mt-1 flex shrink-0 flex-wrap gap-1">
-                    <button
+                    <Button
                       type="button"
-                      className={`rounded px-2 py-1 text-xs ${markupTool === "piece" ? "bg-[#81b64c] text-zinc-950" : "bg-muted"}`}
+                      size="sm"
+                      variant={markupTool === "piece" ? "default" : "ghost"}
                       onClick={() =>
                         setMarkupTool((current) =>
                           current === "piece" ? "arrow" : "piece",
@@ -712,20 +730,57 @@ export function AdminPuzzleForm() {
                       }
                     >
                       Upravit pozici
-                    </button>
-                    <button
+                    </Button>
+                    <Button
                       type="button"
-                      className={`rounded px-2 py-1 text-xs ${form.kind === "move" ? "bg-[#81b64c] text-zinc-950" : "bg-muted"}`}
+                      size="sm"
+                      variant={form.kind === "move" ? "default" : "ghost"}
                       onClick={() => setForm({ ...form, kind: "move" })}
                     >
                       Zahraj tah
-                    </button>
-                    <button
+                    </Button>
+                    <Button
                       type="button"
-                      className={`rounded px-2 py-1 text-xs ${form.kind === "squares" ? "bg-[#81b64c] text-zinc-950" : "bg-muted"}`}
+                      size="sm"
+                      variant={form.kind === "squares" ? "default" : "ghost"}
                       onClick={() => setForm({ ...form, kind: "squares" })}
                     >
                       Označ pole
+                    </Button>
+                  </div>
+                  <div className="mt-1 flex shrink-0 flex-wrap items-center gap-1">
+                    <span className="pr-1 text-xs text-muted-foreground">
+                      Z/X
+                    </span>
+                    <button
+                      type="button"
+                      className={cn(
+                        "rounded px-2 py-1 text-xs",
+                        stepReset === "keep"
+                          ? "bg-primary text-primary-foreground"
+                          : "bg-transparent",
+                      )}
+                      onClick={() => {
+                        setStepReset("keep");
+                        writeAdminStepReset("keep");
+                      }}
+                    >
+                      Nechat Před/Po
+                    </button>
+                    <button
+                      type="button"
+                      className={cn(
+                        "rounded px-2 py-1 text-xs",
+                        stepReset === "before"
+                          ? "bg-primary text-primary-foreground"
+                          : "bg-transparent",
+                      )}
+                      onClick={() => {
+                        setStepReset("before");
+                        writeAdminStepReset("before");
+                      }}
+                    >
+                      Vždy před tahem
                     </button>
                   </div>
                   <div className="mt-2 flex shrink-0 flex-col gap-1.5">
@@ -741,7 +796,6 @@ export function AdminPuzzleForm() {
                   <div className="flex items-center gap-1">
                     <Button
                       type="button"
-                      variant="outline"
                       size="sm"
                       className="h-8 shrink-0 px-2"
                       disabled={!isValidFen(form.fen)}
@@ -1070,10 +1124,10 @@ function previewWrongMarkup(reply: WrongReply): BoardMarkup {
   const move = uciMoveArrow(reply.answer);
   if (!move) return layer;
   layer.arrows = [
-    move,
     ...layer.arrows.filter(
       (arrow) => arrow.from !== move.from || arrow.to !== move.to,
     ),
+    move,
   ];
   return layer;
 }

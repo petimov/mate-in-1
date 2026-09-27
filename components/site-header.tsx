@@ -95,7 +95,9 @@ export function SiteHeader() {
                   home
                     ? "whitespace-nowrap"
                     : "rounded-md px-2 py-1 whitespace-nowrap hover:text-foreground",
-                  !home && active && "bg-foreground/8 text-foreground",
+                  !home &&
+                    active &&
+                    "bg-[#00d26a] px-2.5 py-1 font-semibold text-black hover:text-black",
                 )}
               >
                 {link.label}
