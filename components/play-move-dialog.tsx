@@ -54,6 +54,7 @@ type PlayMoveDialogProps = {
   open: boolean;
   title?: string;
   explain?: boolean;
+  initialUci?: string;
   initialMarkup?: BoardMarkup;
   instanceKey?: string;
   onClose: () => void;
@@ -65,6 +66,7 @@ export function PlayMoveDialog({
   open,
   title = "Zahrát tah",
   explain = false,
+  initialUci,
   initialMarkup,
   instanceKey,
   onClose,
@@ -109,9 +111,10 @@ export function PlayMoveDialog({
         </div>
         {valid ? (
           <PlayMoveBoard
-            key={instanceKey ?? `${fen}-${explain}`}
+            key={instanceKey ?? `${fen}-${explain}-${initialUci ?? ""}`}
             fen={fen}
             explain={explain}
+            initialUci={initialUci}
             initialMarkup={initialMarkup}
             onPick={onPick}
             onClose={onClose}
@@ -124,30 +127,49 @@ export function PlayMoveDialog({
   );
 }
 
+function applyLine(startFen: string, ucis: string[]) {
+  const game = new Chess(startFen);
+  const played: string[] = [];
+  let last: { from: string; to: string } | null = null;
+  for (const item of ucis) {
+    if (!applyUci(game, item)) break;
+    played.push(item);
+    last = { from: item.slice(0, 2), to: item.slice(2, 4) };
+  }
+  return {
+    fen: game.fen(),
+    played,
+    last,
+  };
+}
+
 function PlayMoveBoard({
   fen,
   explain,
+  initialUci,
   initialMarkup,
   onPick,
   onClose,
 }: {
   fen: string;
   explain: boolean;
+  initialUci?: string;
   initialMarkup?: BoardMarkup;
   onPick: (uci: string, markup?: BoardMarkup) => void;
   onClose: () => void;
 }) {
+  const start = useMemo(() => applyLine(fen, []), [fen]);
   const gameRef = useRef<Chess | null>(null);
   if (gameRef.current === null) {
-    gameRef.current = new Chess(fen);
+    gameRef.current = new Chess(start.fen);
   }
 
-  const [position, setPosition] = useState(fen);
+  const [position, setPosition] = useState(start.fen);
   const [selected, setSelected] = useState<string | null>(null);
   const [lastMove, setLastMove] = useState<{ from: string; to: string } | null>(
-    null,
+    start.last,
   );
-  const [uci, setUci] = useState("");
+  const [line, setLine] = useState<string[]>(start.played);
   const [layer, setLayer] = useState<BoardMarkup>(() =>
     cloneBoardMarkup(initialMarkup),
   );
@@ -157,28 +179,30 @@ function PlayMoveBoard({
   selectedRef.current = selected;
   const arrowFromRef = useRef<string | null>(null);
   const skipClickRef = useRef(false);
-  const drawOn = Boolean(explain && uci);
+  const answer = line[0] || initialUci || "";
+  const locked = Boolean(line[0]);
+  const drawOn = Boolean(explain);
 
   useEffect(() => {
-    gameRef.current = new Chess(fen);
-    setPosition(fen);
+    gameRef.current = new Chess(start.fen);
+    setPosition(start.fen);
     setSelected(null);
-    setLastMove(null);
-    setUci("");
+    setLastMove(start.last);
+    setLine(start.played);
     setLayer(cloneBoardMarkup(initialMarkup));
     setArrowFrom(null);
     arrowFromRef.current = null;
-  }, [fen]);
+  }, [fen, initialMarkup, start]);
 
   const orientation = useMemo(() => orientationFromFen(fen), [fen]);
 
   const dests = useMemo(() => {
-    if (!selected || uci) return [];
+    if (!selected || locked) return [];
     return legalDests(gameRef.current!, selected);
-  }, [selected, uci, position]);
+  }, [locked, selected, position]);
 
   const tryMove = useCallback((from: string, to: string, pieceType: string) => {
-    if (uci) return false;
+    if (locked) return false;
     if (from === to) return false;
     const game = gameRef.current!;
     const moveUci = dropToUci(from, to, pieceType, "");
@@ -187,9 +211,9 @@ function PlayMoveBoard({
     selectedRef.current = null;
     setLastMove({ from, to });
     setPosition(game.fen());
-    setUci(moveUci);
+    setLine((current) => [...current, moveUci]);
     return true;
-  }, [uci]);
+  }, [locked]);
 
   const addArrow = useCallback((from: string, to: string) => {
     setLayer((current) => {
@@ -203,7 +227,7 @@ function PlayMoveBoard({
 
   const handleSquare = useCallback(
     (square: string) => {
-      if (drawOn || uci) return;
+      if (locked) return;
       const game = gameRef.current!;
       const from = selectedRef.current;
       if (from) {
@@ -222,7 +246,7 @@ function PlayMoveBoard({
       }
       if (isSideToMove(game, square)) setSelected(square);
     },
-    [drawOn, tryMove, uci],
+    [locked, tryMove],
   );
 
   const onSquareRightClick = useCallback(
@@ -289,10 +313,10 @@ function PlayMoveBoard({
       extra[lastMove.from] = LAST_MOVE;
       extra[lastMove.to] = LAST_MOVE;
     }
-    if (selected && !uci) extra[selected] = SELECTED;
+    if (selected && !locked) extra[selected] = SELECTED;
     if (arrowFrom) extra[arrowFrom] = SELECTED;
     return mergeSquareStyles(board, extra);
-  }, [arrowFrom, board, lastMove, layer, selected, uci]);
+  }, [arrowFrom, board, lastMove, layer, locked, selected]);
 
   const squareRenderer = useCallback(
     ({
@@ -331,7 +355,7 @@ function PlayMoveBoard({
       id: boardId,
       position,
       boardOrientation: orientation,
-      allowDragging: !uci,
+      allowDragging: !locked,
       allowDrawingArrows: false,
       showAnimations: true,
       animationDurationInMs: 250,
@@ -375,22 +399,23 @@ function PlayMoveBoard({
       position,
       squareRenderer,
       squareStyles,
-      uci,
+      locked,
     ],
   );
 
   function reset() {
-    gameRef.current = new Chess(fen);
-    setPosition(fen);
+    const next = applyLine(fen, []);
+    gameRef.current = new Chess(next.fen);
+    setPosition(next.fen);
     setSelected(null);
-    setLastMove(null);
-    setUci("");
+    setLastMove(next.last);
+    setLine(next.played);
     setLayer(emptyBoardMarkup());
     setArrowFrom(null);
     arrowFromRef.current = null;
   }
 
-  const san = uci ? uciToSan(fen, uci) : "";
+  const san = answer ? uciToSan(fen, answer) : "";
 
   return (
     <div className="flex w-full flex-col">
@@ -402,26 +427,28 @@ function PlayMoveBoard({
         <div
           className="h-full w-full"
           data-turn={position.split(/\s+/)[1] === "b" ? "b" : "w"}
-          data-locked={uci ? "true" : undefined}
+          data-locked={locked ? "true" : undefined}
           onContextMenu={(event) => event.preventDefault()}
         >
           <Chessboard options={options} />
         </div>
       </BoardFrame>
       <p className="mt-3 shrink-0 text-sm text-muted-foreground">
-        {uci
+        {line[0]
           ? explain
-            ? `${san} · pravé tlačítko: šipka.`
-            : `${san} · ${uci}`
-          : "Klikni figurku a pole, nebo táhni."}
+            ? `${san}. Pravé tlačítko: šipka.`
+            : san || "Tah zahrán."
+          : explain
+            ? "Klikni figurku a pole, nebo táhni. Pravé tlačítko: šipka."
+            : "Klikni figurku a pole, nebo táhni."}
       </p>
       <div className="mt-3 flex shrink-0 flex-wrap gap-2">
         <Button
           type="button"
-          disabled={!uci}
+          disabled={!answer}
           onClick={() => {
             onPick(
-              uci,
+              answer,
               explain && !isEmptyBoardMarkup(layer) ? layer : undefined,
             );
             onClose();
@@ -438,7 +465,7 @@ function PlayMoveBoard({
             Smazat šipky
           </Button>
         ) : null}
-        <Button type="button" variant="outline" onClick={reset} disabled={!uci}>
+        <Button type="button" variant="outline" onClick={reset} disabled={!answer}>
           Znovu
         </Button>
         <Button type="button" variant="outline" onClick={onClose}>

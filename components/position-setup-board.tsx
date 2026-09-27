@@ -21,7 +21,15 @@ import { BoardFrame } from "@/components/board-frame";
 import { useBoardAppearance } from "@/components/board-appearance-provider";
 import type { SetupTool } from "@/components/markup-palette";
 import { boardSquareStyles, mergeSquareStyles } from "@/lib/board-appearance";
-import { isValidFen } from "@/lib/chess";
+import {
+  applyUci,
+  dropToUci,
+  isSideToMove,
+  isValidFen,
+  legalDests,
+  pieceTypeAt,
+} from "@/lib/chess";
+import { Chess } from "chess.js";
 import {
   EMPTY_SETUP_FEN,
   START_SETUP_FEN,
@@ -64,6 +72,9 @@ type PositionSetupBoardProps = {
   tool?: SetupTool;
   brush?: Brush;
   orientation?: "white" | "black";
+  playMode?: boolean;
+  moveLocked?: boolean;
+  onPlayMove?: (uci: string) => void;
 };
 
 export function PositionSetupBoard({
@@ -78,11 +89,17 @@ export function PositionSetupBoard({
   tool = "piece",
   brush = "green",
   orientation = "white",
+  playMode = false,
+  moveLocked = false,
+  onPlayMove,
 }: PositionSetupBoardProps) {
   const { board, pieces } = useBoardAppearance();
   const rootRef = useRef<HTMLDivElement>(null);
   const [boardPx, setBoardPx] = useState<number | null>(null);
   const [spare, setSpare] = useState<string | null>(null);
+  const [selected, setSelected] = useState<string | null>(null);
+  const selectedRef = useRef<string | null>(null);
+  selectedRef.current = selected;
   const [arrowFrom, setArrowFrom] = useState<string | null>(null);
   const arrowFromRef = useRef<string | null>(null);
   const skipClickRef = useRef(false);
@@ -117,6 +134,40 @@ export function PositionSetupBoard({
   const valid = isValidFen(displayFen);
   const layer = markup;
   const canMarkup = Boolean(onMarkupChange && !spare);
+  const canPlay = playMode && !moveLocked && Boolean(onPlayMove);
+
+  useEffect(() => {
+    setSelected(null);
+    selectedRef.current = null;
+    setSpare(null);
+  }, [displayFen, playMode]);
+
+  const dests = useMemo(() => {
+    if (!canPlay || !selected || !valid) return [];
+    const game = new Chess(displayFen);
+    return legalDests(game, selected);
+  }, [canPlay, displayFen, selected, valid]);
+
+  const destLookup = useMemo(() => {
+    const map = new Map<string, boolean>();
+    for (const dest of dests) map.set(dest.square, dest.capture);
+    return map;
+  }, [dests]);
+
+  const tryLegal = useCallback(
+    (from: string, to: string, pieceType: string) => {
+      if (!canPlay || !onPlayMove) return false;
+      if (from === to) return false;
+      const game = new Chess(displayFen);
+      const uci = dropToUci(from, to, pieceType, "");
+      if (!applyUci(game, uci)) return false;
+      onPlayMove(uci);
+      setSelected(null);
+      selectedRef.current = null;
+      return true;
+    },
+    [canPlay, displayFen, onPlayMove],
+  );
 
   const squareStyles = useMemo(() => {
     const extra: Record<string, CSSProperties> = {
@@ -126,8 +177,11 @@ export function PositionSetupBoard({
     if (arrowFrom) {
       extra[arrowFrom] = { backgroundColor: "rgba(20, 85, 30, 0.35)" };
     }
+    if (selected) {
+      extra[selected] = { backgroundColor: "rgba(20, 85, 30, 0.5)" };
+    }
     return mergeSquareStyles(board, extra);
-  }, [arrowFrom, board, layer, selectedSquares]);
+  }, [arrowFrom, board, layer, selected, selectedSquares]);
 
   const addArrow = useCallback(
     (from: string, to: string) => {
@@ -161,13 +215,33 @@ export function PositionSetupBoard({
         skipClickRef.current = false;
         return;
       }
+      if (playMode) {
+        if (moveLocked) return;
+        const game = new Chess(displayFen);
+        const from = selectedRef.current;
+        if (from) {
+          if (square === from) return;
+          if (legalDests(game, from).some((dest) => dest.square === square)) {
+            tryLegal(from, square, pieceTypeAt(game, from));
+            return;
+          }
+          if (isSideToMove(game, square)) {
+            setSelected(square);
+            return;
+          }
+          setSelected(null);
+          return;
+        }
+        if (isSideToMove(game, square)) setSelected(square);
+        return;
+      }
       if (spare) {
         onChange(setFenPiece(displayFen, square, spare));
         return;
       }
       onToggleSquare?.(square);
     },
-    [displayFen, onChange, onToggleSquare, spare],
+    [displayFen, moveLocked, onChange, onToggleSquare, playMode, spare, tryLegal],
   );
 
   const onSquareRightClick = useCallback(
@@ -210,7 +284,11 @@ export function PositionSetupBoard({
   );
 
   const onPieceDrop = useCallback(
-    ({ sourceSquare, targetSquare }: PieceDropHandlerArgs) => {
+    ({ piece, sourceSquare, targetSquare }: PieceDropHandlerArgs) => {
+      if (playMode) {
+        if (!targetSquare) return false;
+        return tryLegal(sourceSquare, targetSquare, piece.pieceType);
+      }
       if (!targetSquare) {
         if (sourceSquare) onChange(setFenPiece(displayFen, sourceSquare, null));
         return true;
@@ -219,7 +297,7 @@ export function PositionSetupBoard({
       onChange(moveFenPiece(displayFen, sourceSquare, targetSquare));
       return true;
     },
-    [displayFen, onChange],
+    [displayFen, onChange, playMode, tryLegal],
   );
 
   const squareRenderer = useCallback(
@@ -228,9 +306,18 @@ export function PositionSetupBoard({
       children,
     }: SquareHandlerArgs & { children?: ReactNode }) => {
       const circle = markupCircleColor(square, layer);
+      const capture = destLookup.get(square);
       return (
-        <div className="relative h-full w-full" style={squareStyles[square]}>
+        <div
+          className={cn(
+            "relative h-full w-full",
+            capture !== undefined && "cb-legal",
+          )}
+          style={squareStyles[square]}
+        >
           {children}
+          {capture === false ? <span className="cb-dest" /> : null}
+          {capture === true ? <span className="cb-capture" /> : null}
           {circle ? (
             <span
               className="cb-circle"
@@ -240,7 +327,7 @@ export function PositionSetupBoard({
         </div>
       );
     },
-    [layer, squareStyles],
+    [destLookup, layer, squareStyles],
   );
 
   const options = useMemo(
@@ -249,8 +336,8 @@ export function PositionSetupBoard({
       position: displayFen,
       boardOrientation: orientation,
       pieces,
-      allowDragging: !spare,
-      allowDragOffBoard: true,
+      allowDragging: playMode ? canPlay : !spare,
+      allowDragOffBoard: !playMode,
       allowDrawingArrows: false,
       showAnimations: false,
       arrows: toChessboardArrows(layer),
@@ -262,6 +349,9 @@ export function PositionSetupBoard({
       onSquareMouseDown,
       onSquareMouseUp,
       onPieceDrop,
+      onPieceClick: ({ square }: SquareHandlerArgs) => {
+        if (square) onSquareClick({ square });
+      },
       boardStyle: { width: "100%", overflow: "visible" as const },
       ...boardSquareStyles(board),
     }),
@@ -272,6 +362,8 @@ export function PositionSetupBoard({
       orientation,
       layer,
       spare,
+      canPlay,
+      playMode,
       onPieceDrop,
       onSquareClick,
       onSquareMouseDown,
@@ -288,6 +380,7 @@ export function PositionSetupBoard({
       ref={rootRef}
       className={cn("flex min-h-0 flex-col gap-0", className)}
     >
+      {playMode ? null : (
       <div data-setup-chrome>
         <PieceTray
           pieces={pieces}
@@ -296,6 +389,7 @@ export function PositionSetupBoard({
           onSelect={setSpare}
         />
       </div>
+      )}
       <div
         className="relative shrink-0 overflow-visible"
         onContextMenu={(event) => event.preventDefault()}
@@ -313,6 +407,7 @@ export function PositionSetupBoard({
             <Chessboard key={`${board.id}-${boardId}-${orientation}`} options={options} />
           </BoardFrame>
       </div>
+      {playMode ? null : (
       <div
         data-setup-chrome
         className="relative flex shrink-0 items-center justify-center"
@@ -360,6 +455,7 @@ export function PositionSetupBoard({
           onSelect={setSpare}
         />
       </div>
+      )}
       {!valid && fen.trim() ? (
         <p className="text-[10px] text-amber-500">Neplatný FEN</p>
       ) : null}

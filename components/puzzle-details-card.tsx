@@ -184,9 +184,9 @@ export const PuzzleDetailsCard = memo(function PuzzleDetailsCard({
         )}
 
         {wrongNote ? (
-          <div className="mt-4 rounded-lg border border-red-400/35 bg-red-500/10 p-3 text-sm leading-relaxed text-red-800 dark:bg-red-950/40 dark:text-red-100">
+          <p className="mt-4 text-sm leading-relaxed text-foreground">
             {wrongNote}
-          </div>
+          </p>
         ) : done && puzzle.explanation?.trim() ? (
           <p className="mt-4 text-sm leading-relaxed text-foreground">
             {puzzle.explanation.trim()}

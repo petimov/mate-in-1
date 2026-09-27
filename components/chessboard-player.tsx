@@ -13,8 +13,6 @@ import {
   useRef,
   useState,
 } from "react";
-import { X } from "lucide-react";
-
 import { BoardFrame } from "@/components/board-frame";
 import { useBoardAppearance } from "@/components/board-appearance-provider";
 import {
@@ -31,7 +29,6 @@ import {
   pieceTypeAt,
 } from "@/lib/chess";
 import { chessgroundBrushes, toChessgroundShapes, type BoardMarkup } from "@/lib/markup";
-import { cn } from "@/lib/utils";
 
 import "chessground/assets/chessground.base.css";
 
@@ -46,6 +43,8 @@ type ChessboardPlayerProps = {
   expectedUci: string;
   onCorrect: () => void;
   onWrong?: (uci: string) => void;
+  onRetry?: () => void;
+  snapMode?: "auto" | "click";
   markup?: BoardMarkup;
 };
 
@@ -61,6 +60,8 @@ export const ChessboardPlayer = memo(function ChessboardPlayer({
   expectedUci,
   onCorrect,
   onWrong,
+  onRetry,
+  snapMode = "auto",
   markup,
 }: ChessboardPlayerProps) {
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -76,6 +77,10 @@ export const ChessboardPlayer = memo(function ChessboardPlayer({
   onCorrectRef.current = onCorrect;
   const onWrongRef = useRef(onWrong);
   onWrongRef.current = onWrong;
+  const onRetryRef = useRef(onRetry);
+  onRetryRef.current = onRetry;
+  const snapModeRef = useRef(snapMode);
+  snapModeRef.current = snapMode;
   const expectedRef = useRef(expectedUci);
   expectedRef.current = expectedUci;
   const playedMoveRef = useRef(playedMove);
@@ -83,6 +88,7 @@ export const ChessboardPlayer = memo(function ChessboardPlayer({
 
   const [incorrect, setIncorrect] = useState(false);
   const revertingRef = useRef(false);
+  const pendingRevertRef = useRef<(() => void) | null>(null);
   const snapTimer = useRef(0);
   const { board, pieceId } = useBoardAppearance();
   const { flipped } = useTrainerControls();
@@ -147,7 +153,7 @@ export const ChessboardPlayer = memo(function ChessboardPlayer({
     setIncorrect(true);
     onWrongRef.current?.(uci);
     window.clearTimeout(snapTimer.current);
-    snapTimer.current = window.setTimeout(() => {
+    const revert = () => {
       const last = playedMoveRef.current;
       api.set({
         fen: game.fen(),
@@ -162,7 +168,13 @@ export const ChessboardPlayer = memo(function ChessboardPlayer({
       });
       setIncorrect(false);
       revertingRef.current = false;
-    }, SNAP_BACK_MS);
+      onRetryRef.current?.();
+    };
+    if (snapModeRef.current === "click") {
+      pendingRevertRef.current = revert;
+      return;
+    }
+    snapTimer.current = window.setTimeout(revert, SNAP_BACK_MS);
   }, []);
 
   const onUserMoveRef = useRef(onUserMove);
@@ -177,6 +189,7 @@ export const ChessboardPlayer = memo(function ChessboardPlayer({
     if (currentBoard !== nextBoard) {
       window.clearTimeout(snapTimer.current);
       revertingRef.current = false;
+      pendingRevertRef.current = null;
       gameRef.current = new Chess(positionFen);
       setIncorrect(false);
     }
@@ -264,12 +277,16 @@ export const ChessboardPlayer = memo(function ChessboardPlayer({
   const pieceCss = useMemo(() => pieceSetCss(pieceId), [pieceId]);
 
   return (
+    <div className="flex w-full flex-col">
     <div
-      className={cn(
-        "relative aspect-square w-full select-none",
-        incorrect && "ring-2 ring-red-500",
-      )}
+      className="relative aspect-square w-full select-none"
       data-wrong={incorrect ? "true" : undefined}
+      onClick={() => {
+        if (!pendingRevertRef.current) return;
+        const revert = pendingRevertRef.current;
+        pendingRevertRef.current = null;
+        revert();
+      }}
     >
       <BoardFrame
         orientation={orientation}
@@ -279,14 +296,7 @@ export const ChessboardPlayer = memo(function ChessboardPlayer({
         <style>{pieceCss}</style>
         <div ref={wrapRef} className="cg-board-host h-full w-full" />
       </BoardFrame>
-      {incorrect ? (
-        <div className="pointer-events-none absolute inset-0 flex items-start justify-center pt-6">
-          <div className="flex items-center gap-2 rounded-full border border-red-400/40 bg-zinc-950/90 px-4 py-2 text-red-300 shadow-2xl backdrop-blur-sm">
-            <X className="size-4" strokeWidth={3} />
-            <p className="text-sm font-semibold tracking-wide">Špatně</p>
-          </div>
-        </div>
-      ) : null}
+    </div>
     </div>
   );
 });

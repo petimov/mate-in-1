@@ -18,7 +18,18 @@ import {
   takeSnapshot,
   type AdminSnapshot,
 } from "@/lib/admin-history";
-import { fenAfterUci, isValidFen, normalizeUci, startFenForLine } from "@/lib/chess";
+import {
+  fenAfterUci,
+  isValidFen,
+  normalizeUci,
+  startFenForLine,
+  uciToSan,
+} from "@/lib/chess";
+import {
+  normalizeReplyCode,
+  replyCodeForInput,
+  resolveWrongReplyText,
+} from "@/lib/wrong-reply-codes";
 import {
   DEMO_CURRICULUM,
   bindPuzzlesToCurriculum,
@@ -33,6 +44,7 @@ import {
 import {
   cloneBoardMarkup,
   clonePuzzleMarkup,
+  emptyBoardMarkup,
   emptyPuzzleMarkup,
   isEmptyBoardMarkup,
   type Brush,
@@ -71,9 +83,8 @@ export function AdminPuzzleForm() {
   const [selectedChapterId, setSelectedChapterId] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  const [playTarget, setPlayTarget] = useState<"solution" | number | null>(
-    null,
-  );
+  const [playTarget, setPlayTarget] = useState<"solution" | null>(null);
+  const [wrongEdit, setWrongEdit] = useState<number | null>(null);
   const [boardOpen, setBoardOpen] = useState(false);
   const [markupTool, setMarkupTool] = useState<SetupTool>("arrow");
   const [markupBrush, setMarkupBrush] = useState<Brush>("green");
@@ -431,6 +442,7 @@ export function AdminPuzzleForm() {
       sort: puzzle.sort ?? 0,
     });
     setSelectedChapterId(puzzle.chapterId ?? null);
+    setWrongEdit(null);
     setStatus(null);
   }
 
@@ -449,7 +461,8 @@ export function AdminPuzzleForm() {
       ...form,
       wrongReplies: [...form.wrongReplies, { answer: "", text }],
     });
-    if (form.kind === "move" && isValidFen(form.fen)) setPlayTarget(index);
+    setWrongEdit(index);
+    if (markupTool === "piece") setMarkupTool("arrow");
   }
 
   async function onSave(event: FormEvent) {
@@ -509,14 +522,32 @@ export function AdminPuzzleForm() {
   }
 
   const solutionUci = form.kind === "move" ? normalizeUci(form.move) : "";
+  const solutionSan =
+    solutionUci && isValidFen(form.fen)
+      ? uciToSan(form.fen, solutionUci)
+      : "";
   const afterFen =
     solutionUci && isValidFen(form.fen)
       ? fenAfterUci(form.fen, solutionUci)
       : null;
+  const startFen = startFenForLine(form.fen, form.move ? [form.move] : []);
+  const editingReply =
+    wrongEdit !== null ? form.wrongReplies[wrongEdit] : undefined;
+  const wrongFen =
+    editingReply?.answer && isValidFen(startFen)
+      ? fenAfterUci(startFen, editingReply.answer)
+      : null;
   const boardFen =
-    markupPhase === "after" && afterFen ? afterFen : form.fen;
-  const markupLayer =
-    markupPhase === "after" ? form.markup.after : form.markup.before;
+    editingReply
+      ? (wrongFen ?? startFen)
+      : markupPhase === "after" && afterFen
+        ? afterFen
+        : form.fen;
+  const markupLayer = editingReply
+    ? (editingReply.markup ?? emptyBoardMarkup())
+    : markupPhase === "after"
+      ? form.markup.after
+      : form.markup.before;
   const chapterPlace = placementOf(
     curriculum,
     selectedChapterId ?? form.chapterId,
@@ -569,6 +600,7 @@ export function AdminPuzzleForm() {
               onNewPuzzle={(chapterId) => {
                 setSelectedChapterId(chapterId);
                 setForm({ ...emptyForm(), chapterId });
+                setWrongEdit(null);
                 setStatus(null);
               }}
               onDeletePuzzles={(ids) => void onDeletePuzzles(ids)}
@@ -590,7 +622,21 @@ export function AdminPuzzleForm() {
                     boardId="admin-preview-setup"
                     className="min-h-0 flex-1"
                     fen={boardFen}
+                    playMode={wrongEdit !== null}
+                    moveLocked={Boolean(editingReply?.answer)}
+                    onPlayMove={(uci) => {
+                      if (wrongEdit === null) return;
+                      const index = wrongEdit;
+                      setForm((current) => {
+                        const next = [...current.wrongReplies];
+                        const row = next[index];
+                        if (!row) return current;
+                        next[index] = { ...row, answer: uci };
+                        return { ...current, wrongReplies: next };
+                      });
+                    }}
                     onChange={(fen) => {
+                      if (wrongEdit !== null) return;
                       if (markupPhase === "after") return;
                       setForm((current) => ({ ...current, fen }));
                     }}
@@ -598,17 +644,28 @@ export function AdminPuzzleForm() {
                       form.kind === "squares" ? parseSquares(form.squares) : []
                     }
                     onToggleSquare={
-                      form.kind === "squares" ? toggleSquare : undefined
+                      form.kind === "squares" && wrongEdit === null
+                        ? toggleSquare
+                        : undefined
                     }
                     markup={markupLayer}
                     onMarkupChange={(layer) =>
-                      setForm((current) => ({
-                        ...current,
-                        markup: {
-                          ...current.markup,
-                          [markupPhase]: layer,
-                        },
-                      }))
+                      setForm((current) => {
+                        if (wrongEdit !== null) {
+                          const next = [...current.wrongReplies];
+                          const row = next[wrongEdit];
+                          if (!row) return current;
+                          next[wrongEdit] = { ...row, markup: layer };
+                          return { ...current, wrongReplies: next };
+                        }
+                        return {
+                          ...current,
+                          markup: {
+                            ...current.markup,
+                            [markupPhase]: layer,
+                          },
+                        };
+                      })
                     }
                     tool={markupTool}
                     brush={markupBrush}
@@ -668,14 +725,6 @@ export function AdminPuzzleForm() {
                 />
               {form.kind === "move" ? (
                   <div className="flex items-center gap-1">
-                    <Input
-                      id="move"
-                      required
-                      className="h-8 w-24 shrink-0 px-2"
-                      placeholder="UCI"
-                      value={form.move}
-                      onChange={(e) => setForm({ ...form, move: e.target.value })}
-                    />
                     <Button
                       type="button"
                       variant="outline"
@@ -686,6 +735,9 @@ export function AdminPuzzleForm() {
                     >
                       Tah
                     </Button>
+                    {solutionSan ? (
+                      <span className="text-sm">{solutionSan}</span>
+                    ) : null}
                   </div>
               ) : (
                   <div className="flex gap-1">
@@ -726,12 +778,24 @@ export function AdminPuzzleForm() {
                   brush={markupBrush}
                   kind={form.kind}
                   canAfter={Boolean(afterFen)}
+                  hidePhase={wrongEdit !== null}
                   onPhase={setMarkupPhase}
                   onTool={setMarkupTool}
                   onBrush={setMarkupBrush}
-                  onChange={(markup) =>
-                    setForm((current) => ({ ...current, markup }))
-                  }
+                  onChange={(markup) => {
+                    if (wrongEdit !== null) {
+                      const layer = cloneBoardMarkup(markup[markupPhase]);
+                      setForm((current) => {
+                        const next = [...current.wrongReplies];
+                        const row = next[wrongEdit];
+                        if (!row) return current;
+                        next[wrongEdit] = { ...row, markup: layer };
+                        return { ...current, wrongReplies: next };
+                      });
+                      return;
+                    }
+                    setForm((current) => ({ ...current, markup }));
+                  }}
                 />
                     </div>
                   </details>
@@ -752,7 +816,10 @@ export function AdminPuzzleForm() {
                   />
                     </div>
                   </details>
-                  <details className="shrink-0 border-t border-border pt-1">
+                  <details
+                    className="shrink-0 border-t border-border pt-1"
+                    open={wrongEdit !== null ? true : undefined}
+                  >
                     <summary className="cursor-pointer select-none px-1 py-1 text-sm text-muted-foreground hover:text-foreground">
                       Špatné tahy
                       {form.wrongReplies.length
@@ -760,30 +827,59 @@ export function AdminPuzzleForm() {
                         : ""}
                     </summary>
                     <div className="px-0.5 pb-2">
-                  <div className="mb-1 flex justify-end">
+                  <div className="space-y-1">
+                    <div className="flex flex-wrap items-center gap-2">
                     <Button
                       type="button"
-                      variant="outline"
-                      size="sm"
-                      className="h-8 px-2 text-xs"
+                      className="h-10 px-5 text-sm"
                       disabled={!isValidFen(form.fen)}
                       onClick={addWrongReply}
                     >
-                      + tah
+                      + špatný tah
                     </Button>
-                  </div>
-                  <div className="space-y-1">
+                    {wrongEdit !== null ? (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="h-10 px-4 text-sm"
+                        onClick={() => setWrongEdit(null)}
+                      >
+                        Hotovo
+                      </Button>
+                    ) : null}
+                    </div>
+                    {wrongEdit !== null ? (
+                      <p className="text-xs text-muted-foreground">
+                        Na desce: špatný tah, pak pravé tlačítko — šipky a kroužky.
+                      </p>
+                    ) : null}
                     {form.wrongReplies.map((reply, index) => (
-                      <div key={index} className="flex items-center gap-1">
+                      <div
+                        key={index}
+                        className={`flex items-center gap-1 ${wrongEdit === index ? "rounded bg-foreground/5" : ""}`}
+                      >
                         <Button
                           type="button"
                           variant="outline"
                           size="sm"
-                          className="h-8 w-[5.5rem] shrink-0 px-1 font-mono text-xs"
+                          className="h-8 shrink-0 px-2"
                           disabled={!isValidFen(form.fen)}
-                          onClick={() => setPlayTarget(index)}
+                          onClick={() => {
+                            if (wrongEdit === index) {
+                              setForm((current) => {
+                                const next = [...current.wrongReplies];
+                                const row = next[index];
+                                if (!row) return current;
+                                next[index] = { ...row, answer: "" };
+                                return { ...current, wrongReplies: next };
+                              });
+                              return;
+                            }
+                            setWrongEdit(index);
+                            if (markupTool === "piece") setMarkupTool("arrow");
+                          }}
                         >
-                          {reply.answer || "Zahrát"}
+                          {wrongEdit === index && reply.answer ? "Znovu" : "Tah"}
                         </Button>
                         {reply.markup && !isEmptyBoardMarkup(reply.markup) ? (
                           <span
@@ -794,11 +890,16 @@ export function AdminPuzzleForm() {
                           </span>
                         ) : null}
                         <Input
-                          className="h-8 px-2 text-sm"
-                          placeholder="Text (volitelně)"
-                          value={reply.text}
+                          className="h-8 w-12 shrink-0 px-1 text-center text-sm uppercase"
+                          maxLength={3}
+                          placeholder="kód"
+                          title={
+                            resolveWrongReplyText(reply.text) ||
+                            (reply.text ? "není v tabulce" : "kód, max 3 písmena")
+                          }
+                          value={replyCodeForInput(reply.text)}
                           onChange={(event) => {
-                            const text = event.target.value;
+                            const text = normalizeReplyCode(event.target.value);
                             setForm({
                               ...form,
                               wrongReplies: form.wrongReplies.map((item, itemIndex) =>
@@ -810,14 +911,19 @@ export function AdminPuzzleForm() {
                         <button
                           type="button"
                           className="shrink-0 px-1 text-muted-foreground hover:text-foreground"
-                          onClick={() =>
+                          onClick={() => {
                             setForm({
                               ...form,
                               wrongReplies: form.wrongReplies.filter(
                                 (_, itemIndex) => itemIndex !== index,
                               ),
-                            })
-                          }
+                            });
+                            setWrongEdit((current) => {
+                              if (current === null) return null;
+                              if (current === index) return null;
+                              return current > index ? current - 1 : current;
+                            });
+                          }}
                         >
                           ×
                         </button>
@@ -916,34 +1022,13 @@ export function AdminPuzzleForm() {
         onChange={(markup) => setForm((current) => ({ ...current, markup }))}
       />
       <PlayMoveDialog
-        fen={startFenForLine(form.fen, form.move ? [form.move] : [])}
-        open={playTarget !== null}
-        title={
-          playTarget === "solution" ? "Zahrát řešení" : "Špatný tah + proč"
-        }
-        explain={typeof playTarget === "number"}
-        instanceKey={String(playTarget)}
-        initialMarkup={
-          typeof playTarget === "number"
-            ? form.wrongReplies[playTarget]?.markup
-            : undefined
-        }
+        fen={startFen}
+        open={playTarget === "solution"}
+        title="Zahrát řešení"
+        instanceKey="solution"
         onClose={() => setPlayTarget(null)}
-        onPick={(uci, markup) => {
-          if (playTarget === "solution") {
-            setForm((current) => ({ ...current, move: uci }));
-            return;
-          }
-          if (typeof playTarget === "number") {
-            const index = playTarget;
-            setForm((current) => {
-              const next = [...current.wrongReplies];
-              const row = next[index];
-              if (!row) return current;
-              next[index] = { ...row, answer: uci, markup };
-              return { ...current, wrongReplies: next };
-            });
-          }
+        onPick={(uci) => {
+          setForm((current) => ({ ...current, move: uci }));
         }}
       />
     </div>

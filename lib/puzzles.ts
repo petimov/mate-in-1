@@ -347,10 +347,10 @@ export function validatePuzzleInput(input: PuzzleInput): string | null {
     return null;
   }
   if (moves.length === 0) {
-    return "Úloha na tah potřebuje řešení v UCI, např. e1e8.";
+    return "Úloha na tah potřebuje zahrát řešení.";
   }
   if (!/^[a-h][1-8][a-h][1-8][qrbn]?$/.test(moves[0])) {
-    return "Řešení musí být UCI, např. e1e8.";
+    return "Neplatné řešení. Zahraj tah na šachovnici.";
   }
   return null;
 }

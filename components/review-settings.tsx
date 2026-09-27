@@ -139,6 +139,45 @@ export function ReviewSettings() {
       </div>
 
       <div>
+        <h3 className="text-sm font-semibold">Návrat špatného tahu</h3>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Figurka a šipka zpět. Sám, nebo až po kliknutí — čas na rozbor.
+        </p>
+        <div className="mt-3 grid gap-2 sm:grid-cols-2">
+          <button
+            type="button"
+            className={cn(
+              "rounded-xl border px-3 py-3 text-left",
+              prefs.wrongSnap === "auto"
+                ? "border-primary bg-primary/10"
+                : "border-border hover:bg-foreground/5",
+            )}
+            onClick={() => setPrefs({ ...prefs, wrongSnap: "auto" })}
+          >
+            <span className="block text-sm font-semibold">Automaticky</span>
+            <span className="mt-1 block text-xs text-muted-foreground">
+              Tah i značky se vrátí samy.
+            </span>
+          </button>
+          <button
+            type="button"
+            className={cn(
+              "rounded-xl border px-3 py-3 text-left",
+              prefs.wrongSnap === "click"
+                ? "border-primary bg-primary/10"
+                : "border-border hover:bg-foreground/5",
+            )}
+            onClick={() => setPrefs({ ...prefs, wrongSnap: "click" })}
+          >
+            <span className="block text-sm font-semibold">Po kliknutí</span>
+            <span className="mt-1 block text-xs text-muted-foreground">
+              Klik na šachovnici = zpět.
+            </span>
+          </button>
+        </div>
+      </div>
+
+      <div>
         <h3 className="text-sm font-semibold">Správný tah</h3>
         <p className="mt-1 text-sm text-muted-foreground">
           Mezery: <code className="text-xs">10m</code>,{" "}

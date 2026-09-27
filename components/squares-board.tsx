@@ -12,8 +12,6 @@ import {
   type CSSProperties,
   type ReactNode,
 } from "react";
-import { Check, X } from "lucide-react";
-
 import { BoardFrame } from "@/components/board-frame";
 import { useBoardAppearance } from "@/components/board-appearance-provider";
 import { boardSquareStyles, mergeSquareStyles } from "@/lib/board-appearance";
@@ -196,7 +194,7 @@ export const SquaresBoard = forwardRef<SquaresBoardHandle, SquaresBoardProps>(
       <div
         className={cn(
           "relative aspect-square w-full select-none overflow-visible",
-          feedback === "wrong" && "ring-2 ring-red-500",
+          feedback === "wrong" && "ring-2 ring-red-400/70",
           feedback === "ok" && "ring-2 ring-[#81b64c]",
         )}
         onContextMenu={(event) => event.preventDefault()}
@@ -212,24 +210,6 @@ export const SquaresBoard = forwardRef<SquaresBoardHandle, SquaresBoardProps>(
             <div className="h-full w-full bg-muted" />
           )}
         </BoardFrame>
-
-        {feedback === "wrong" ? (
-          <div className="pointer-events-none absolute inset-0 flex items-start justify-center pt-6">
-            <div className="flex items-center gap-2 rounded-full border border-red-400/40 bg-zinc-950/90 px-4 py-2 text-red-300 shadow-2xl">
-              <X className="size-4" strokeWidth={3} />
-              <p className="text-sm font-semibold">Špatně</p>
-            </div>
-          </div>
-        ) : null}
-
-        {feedback === "ok" ? (
-          <div className="pointer-events-none absolute inset-0 flex items-start justify-center pt-6">
-            <div className="flex items-center gap-2 rounded-full border border-[#81b64c]/50 bg-zinc-950/90 px-4 py-2 text-[#81b64c] shadow-2xl">
-              <Check className="size-4" strokeWidth={3} />
-              <p className="text-sm font-semibold">Správně</p>
-            </div>
-          </div>
-        ) : null}
 
         {interactive && feedback === "idle" && marked.length > 0 ? (
           <p className="pointer-events-none absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full bg-zinc-950/80 px-3 py-1 text-xs text-zinc-300">

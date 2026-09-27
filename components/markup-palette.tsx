@@ -23,6 +23,7 @@ type MarkupPaletteProps = {
   brush: Brush;
   kind: "move" | "squares";
   canAfter: boolean;
+  hidePhase?: boolean;
   onPhase: (phase: MarkupPhase) => void;
   onTool: (tool: SetupTool) => void;
   onBrush: (brush: Brush) => void;
@@ -37,6 +38,7 @@ export function MarkupPalette({
   brush,
   kind,
   canAfter,
+  hidePhase = false,
   onPhase,
   onTool,
   onBrush,
@@ -50,7 +52,7 @@ export function MarkupPalette({
   return (
     <aside className="flex min-w-0 flex-col gap-1.5">
       <div className="flex flex-wrap items-center gap-1">
-        {kind === "move" ? (
+        {kind === "move" && !hidePhase ? (
           <>
             <Chip active={phase === "before"} onClick={() => onPhase("before")}>
               Před
@@ -59,7 +61,7 @@ export function MarkupPalette({
               Po
             </Chip>
             {phase === "after" && !canAfter ? (
-              <span className="text-[10px] text-amber-500">chybí UCI</span>
+              <span className="text-[10px] text-amber-500">chybí tah</span>
             ) : null}
           </>
         ) : null}

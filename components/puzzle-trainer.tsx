@@ -33,6 +33,7 @@ import {
 import { isEmptyBoardMarkup, visibleMarkup } from "@/lib/markup";
 import { puzzleKind } from "@/lib/puzzles";
 import type { Puzzle, PuzzleKind, WrongReply } from "@/lib/types";
+import { resolveWrongReplyText } from "@/lib/wrong-reply-codes";
 import { matchWrongReply } from "@/lib/wrong-replies";
 import {
   buildTrainQueue,
@@ -89,7 +90,7 @@ export function PuzzleTrainer({
   const [ply, setPly] = useState(0);
   const [loading, setLoading] = useState(!initialPuzzles);
   const [wrongHit, setWrongHit] = useState<WrongReply | null>(null);
-  const wrongNote = wrongHit?.text?.trim() ? wrongHit.text : null;
+  const wrongNote = resolveWrongReplyText(wrongHit?.text) || null;
   const [queue, setQueue] = useState<Puzzle[]>([]);
   const [sessionTotal, setSessionTotal] = useState(0);
   const [srsNote, setSrsNote] = useState<string | null>(null);
@@ -414,7 +415,9 @@ export function PuzzleTrainer({
       ? "Hotovo. Mezerník nebo Další."
       : isSquares
         ? "Označ pole. Pak Zkontrolovat."
-        : "Zahraj tah.";
+        : wrongHit && prefs.wrongSnap === "click"
+      ? "Klikni na šachovnici a pokračuj"
+      : "Zahraj tah.";
 
   return (
     <TrainerControlsProvider>
@@ -511,20 +514,25 @@ export function PuzzleTrainer({
                 expectedUci={line.plies[ply]?.uci ?? puzzle.moves[0] ?? ""}
                 onCorrect={onCorrect}
                 onWrong={onWrongMove}
+                onRetry={() => setWrongHit(null)}
+                snapMode={prefs.wrongSnap}
                 markup={boardMarkup}
               />
-            ) : null}
-            {wrongNote ? (
-              <div className="pointer-events-none absolute inset-x-3 bottom-3 z-10 rounded-lg border border-red-400/40 bg-card/95 px-3 py-2 text-sm text-red-700 shadow-2xl dark:text-red-50">
-                {wrongNote}
-              </div>
             ) : null}
           </div>
         </div>
 
         <div className="flex min-h-[4.25rem] items-center justify-between gap-3 border-t border-border bg-panel px-4 py-3">
           <div className="min-w-0">
-            <p className="text-sm text-muted-foreground">{footerCopy}</p>
+            <p
+              className={
+                wrongHit && prefs.wrongSnap === "click"
+                  ? "text-sm font-medium text-foreground"
+                  : "text-sm text-muted-foreground"
+              }
+            >
+              {footerCopy}
+            </p>
             <select
               className="mt-2 w-full max-w-xs rounded-md border border-border bg-background px-2 py-1 text-xs lg:hidden"
               value={index}

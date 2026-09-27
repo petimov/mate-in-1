@@ -390,7 +390,7 @@ export function MarkupEditor({
                 </div>
                 {kind === "move" && phase === "after" && !after ? (
                   <p className="text-xs text-amber-500">
-                    Nejdřív řešení v UCI, ať se tah zahraje.
+                    Nejdřív zahraj řešení, ať se tah zahraje.
                   </p>
                 ) : null}
                 <div className="flex flex-wrap gap-1">

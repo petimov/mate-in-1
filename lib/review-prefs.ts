@@ -6,6 +6,7 @@ export const DAY_MIN = 24 * 60;
 const MAX_MINUTES = 365 * DAY_MIN;
 
 export type LessonMode = "guided" | "chaos" | "colors";
+export type WrongSnap = "auto" | "click";
 
 export type ReviewPrefs = {
   goodIntervals: number[];
@@ -14,6 +15,7 @@ export type ReviewPrefs = {
   intervalUnit: "min";
   lessonMode: LessonMode;
   showMarkup: boolean;
+  wrongSnap: WrongSnap;
 };
 
 export const DEFAULT_REVIEW_PREFS: ReviewPrefs = {
@@ -23,11 +25,17 @@ export const DEFAULT_REVIEW_PREFS: ReviewPrefs = {
   intervalUnit: "min",
   lessonMode: "guided",
   showMarkup: true,
+  wrongSnap: "auto",
 };
 
 export function sanitizeLessonMode(raw: unknown): LessonMode {
   if (raw === "chaos" || raw === "colors") return raw;
   return "guided";
+}
+
+export function sanitizeWrongSnap(raw: unknown): WrongSnap {
+  if (raw === "click") return "click";
+  return "auto";
 }
 
 export const GOOD_PRESETS: { label: string; intervals: number[] }[] = [
@@ -126,6 +134,7 @@ export function normalizeReviewPrefs(raw: unknown): ReviewPrefs {
     intervalUnit: "min",
     lessonMode: sanitizeLessonMode(data.lessonMode),
     showMarkup: data.showMarkup === false ? false : true,
+    wrongSnap: sanitizeWrongSnap(data.wrongSnap),
   };
 }
 
