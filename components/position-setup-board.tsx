@@ -13,6 +13,7 @@ import {
 } from "react";
 import type {
   PieceDropHandlerArgs,
+  PieceHandlerArgs,
   PieceRenderObject,
   SquareHandlerArgs,
 } from "react-chessboard";
@@ -209,8 +210,8 @@ export function PositionSetupBoard({
     [brush, layer, onMarkupChange, tool],
   );
 
-  const onSquareClick = useCallback(
-    ({ square }: SquareHandlerArgs) => {
+  const handleSquare = useCallback(
+    (square: string) => {
       if (skipClickRef.current) {
         skipClickRef.current = false;
         return;
@@ -344,13 +345,13 @@ export function PositionSetupBoard({
       arrowOptions: MARKUP_ARROW_OPTIONS,
       squareStyles,
       squareRenderer,
-      onSquareClick,
+      onSquareClick: ({ square }: SquareHandlerArgs) => handleSquare(square),
       onSquareRightClick,
       onSquareMouseDown,
       onSquareMouseUp,
       onPieceDrop,
-      onPieceClick: ({ square }: SquareHandlerArgs) => {
-        if (square) onSquareClick({ square });
+      onPieceClick: ({ square }: PieceHandlerArgs) => {
+        if (square) handleSquare(square);
       },
       boardStyle: { width: "100%", overflow: "visible" as const },
       ...boardSquareStyles(board),
@@ -365,7 +366,7 @@ export function PositionSetupBoard({
       canPlay,
       playMode,
       onPieceDrop,
-      onSquareClick,
+      handleSquare,
       onSquareMouseDown,
       onSquareMouseUp,
       onSquareRightClick,
