@@ -48,8 +48,8 @@ export function MarkupPalette({
   }
 
   return (
-    <aside className="flex min-w-0 flex-col gap-0.5">
-      <div className="flex flex-wrap items-center gap-0.5">
+    <aside className="flex min-w-0 flex-col gap-1.5">
+      <div className="flex flex-wrap items-center gap-1">
         {kind === "move" ? (
           <>
             <Chip active={phase === "before"} onClick={() => onPhase("before")}>
@@ -74,7 +74,7 @@ export function MarkupPalette({
         </Chip>
         <button
           type="button"
-          className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground"
+          className="rounded bg-muted px-2 py-1 text-xs text-muted-foreground"
           onClick={() =>
             onChange({
               ...markup,
@@ -87,7 +87,7 @@ export function MarkupPalette({
         {phase === "after" ? (
           <button
             type="button"
-            className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground"
+            className="rounded bg-muted px-2 py-1 text-xs text-muted-foreground"
             onClick={() =>
               onChange({
                 ...markup,
@@ -99,23 +99,25 @@ export function MarkupPalette({
           </button>
         ) : null}
       </div>
-      <div className="flex flex-wrap gap-x-1 gap-y-0">
+      <div className="grid grid-cols-4 gap-1.5">
         {MONTESSORI_BRUSHES.map((item) => (
           <button
             key={item.id}
             type="button"
             title={item.hint}
             className={cn(
-              "flex items-center gap-0.5 rounded px-0.5 py-0 text-left text-[10px] leading-5",
-              brush === item.id ? "bg-foreground/10" : "hover:bg-foreground/5",
+              "flex flex-col items-center gap-1 rounded-lg px-1 py-1.5",
+              brush === item.id
+                ? "bg-foreground/10 ring-1 ring-[#81b64c]"
+                : "hover:bg-foreground/5",
             )}
             onClick={() => pickBrush(item.id)}
           >
             <span
-              className="size-2.5 shrink-0 rounded-full border border-black/15"
+              className="size-8 shrink-0 rounded-full border border-black/20 shadow-sm"
               style={{ backgroundColor: BRUSH_HEX[item.id] }}
             />
-            {item.label}
+            <span className="text-[11px] leading-none">{item.label}</span>
           </button>
         ))}
       </div>
@@ -136,7 +138,7 @@ function Chip({
     <button
       type="button"
       className={cn(
-        "rounded px-1.5 py-0.5 text-[11px]",
+        "rounded px-2 py-1 text-xs",
         active ? "bg-[#81b64c] text-zinc-950" : "bg-muted text-muted-foreground",
       )}
       onClick={onClick}

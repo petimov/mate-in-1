@@ -78,7 +78,7 @@ export function PositionSetupBoard({
   brush = "green",
 }: PositionSetupBoardProps) {
   const { board, pieces } = useBoardAppearance();
-  const hostRef = useRef<HTMLDivElement>(null);
+  const rootRef = useRef<HTMLDivElement>(null);
   const [boardPx, setBoardPx] = useState<number | null>(null);
   const [spare, setSpare] = useState<string | null>(null);
   const [arrowFrom, setArrowFrom] = useState<string | null>(null);
@@ -87,19 +87,26 @@ export function PositionSetupBoard({
   arrowFromRef.current = arrowFrom;
 
   useEffect(() => {
-    const host = hostRef.current;
-    if (!host) return;
+    const root = rootRef.current;
+    if (!root) return;
     const sync = () => {
       const rem =
         parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
       const gutter = 2.5 * rem;
-      const raw = Math.min(host.clientWidth, host.clientHeight);
+      let chrome = 0;
+      for (const el of root.querySelectorAll("[data-setup-chrome]")) {
+        chrome += (el as HTMLElement).offsetHeight;
+      }
+      const raw = Math.min(
+        root.clientWidth,
+        Math.max(0, root.clientHeight - chrome),
+      );
       const inner = Math.max(64, Math.floor((raw - gutter) / 8) * 8);
       setBoardPx(inner + gutter);
     };
     sync();
     const observer = new ResizeObserver(sync);
-    observer.observe(host);
+    observer.observe(root);
     return () => observer.disconnect();
   }, []);
 
@@ -273,72 +280,77 @@ export function PositionSetupBoard({
   );
 
   return (
-    <div className={cn("flex min-h-0 flex-col gap-0.5", className)}>
-      <PieceTray
-        pieces={pieces}
-        types={BLACK_TRAY}
-        selected={spare}
-        onSelect={setSpare}
-      />
+    <div
+      ref={rootRef}
+      className={cn("flex min-h-0 flex-col gap-0", className)}
+    >
+      <div data-setup-chrome>
+        <PieceTray
+          pieces={pieces}
+          types={BLACK_TRAY}
+          selected={spare}
+          onSelect={setSpare}
+        />
+      </div>
       <div
-        ref={hostRef}
-        className="relative min-h-0 flex-1 overflow-visible"
+        className="relative shrink-0 overflow-visible"
         onContextMenu={(event) => event.preventDefault()}
+        style={
+          boardPx
+            ? { width: boardPx, height: boardPx }
+            : { height: "100%", aspectRatio: "1", maxWidth: "100%" }
+        }
       >
-        <div
-          className="absolute left-0 top-0"
-          style={
-            boardPx
-              ? { width: boardPx, height: boardPx }
-              : { height: "100%", aspectRatio: "1", maxWidth: "100%" }
-          }
-        >
           <BoardFrame fen={displayFen} className="h-full w-full">
             <Chessboard key={`${board.id}-${boardId}`} options={options} />
           </BoardFrame>
-        </div>
       </div>
-      <PieceTray
-        pieces={pieces}
-        types={WHITE_TRAY}
-        selected={spare}
-        onSelect={setSpare}
-      />
-      <div className="flex shrink-0 flex-wrap items-center gap-0.5">
-        <button
-          type="button"
-          className={cn(
-            "rounded px-1.5 py-0.5 text-[11px]",
-            turn === "w" ? "bg-[#81b64c] text-zinc-950" : "bg-muted",
-          )}
-          onClick={() => onChange(setFenTurn(displayFen, "w"))}
-        >
-          B
-        </button>
-        <button
-          type="button"
-          className={cn(
-            "rounded px-1.5 py-0.5 text-[11px]",
-            turn === "b" ? "bg-[#81b64c] text-zinc-950" : "bg-muted",
-          )}
-          onClick={() => onChange(setFenTurn(displayFen, "b"))}
-        >
-          Č
-        </button>
-        <button
-          type="button"
-          className="rounded bg-muted px-1.5 py-0.5 text-[11px]"
-          onClick={() => onChange(EMPTY_SETUP_FEN)}
-        >
-          0
-        </button>
-        <button
-          type="button"
-          className="rounded bg-muted px-1.5 py-0.5 text-[11px]"
-          onClick={() => onChange(START_SETUP_FEN)}
-        >
-          Start
-        </button>
+      <div
+        data-setup-chrome
+        className="relative flex shrink-0 items-center justify-center"
+      >
+        <div className="absolute left-0 flex items-center gap-0.5">
+          <button
+            type="button"
+            className={cn(
+              "rounded px-1.5 py-0.5 text-[11px]",
+              turn === "w" ? "bg-[#81b64c] text-zinc-950" : "bg-muted",
+            )}
+            onClick={() => onChange(setFenTurn(displayFen, "w"))}
+          >
+            B
+          </button>
+          <button
+            type="button"
+            className={cn(
+              "rounded px-1.5 py-0.5 text-[11px]",
+              turn === "b" ? "bg-[#81b64c] text-zinc-950" : "bg-muted",
+            )}
+            onClick={() => onChange(setFenTurn(displayFen, "b"))}
+          >
+            Č
+          </button>
+          <button
+            type="button"
+            className="rounded bg-muted px-1.5 py-0.5 text-[11px]"
+            onClick={() => onChange(EMPTY_SETUP_FEN)}
+          >
+            0
+          </button>
+          <button
+            type="button"
+            className="rounded bg-muted px-1.5 py-0.5 text-[11px]"
+            onClick={() => onChange(START_SETUP_FEN)}
+          >
+            Start
+          </button>
+        </div>
+        <PieceTray
+          pieces={pieces}
+          types={WHITE_TRAY}
+          selected={spare}
+          onSelect={setSpare}
+        />
       </div>
       {!valid && fen.trim() ? (
         <p className="text-[10px] text-amber-500">Neplatný FEN</p>
@@ -352,14 +364,16 @@ function PieceTray({
   types,
   selected,
   onSelect,
+  className,
 }: {
   pieces: PieceRenderObject;
   types: readonly string[];
   selected: string | null;
   onSelect: (type: string | null) => void;
+  className?: string;
 }) {
   return (
-    <div className="flex justify-center gap-0.5">
+    <div className={cn("flex justify-center gap-1 leading-none", className)}>
       {types.map((type) => {
         const Piece = pieces[type];
         const active = selected === type;
@@ -369,7 +383,7 @@ function PieceTray({
             type="button"
             title={type}
             className={cn(
-              "size-5 rounded p-0 hover:bg-foreground/10",
+              "size-8 rounded p-0.5 hover:bg-foreground/10",
               active && "bg-foreground/15 ring-1 ring-[#81b64c]",
             )}
             onClick={() => onSelect(active ? null : type)}

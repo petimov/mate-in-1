@@ -22,7 +22,7 @@ export const MONTESSORI_BRUSHES: {
   { id: "orange", label: "Král", hint: "Oranžová" },
   { id: "rose", label: "Dáma", hint: "Růžová" },
   { id: "blue", label: "Věž", hint: "Modrá" },
-  { id: "violet", label: "Střelec", hint: "Fialová" },
+  { id: "green", label: "Střelec", hint: "Zelená" },
   { id: "brown", label: "Kůň", hint: "Hnědá" },
   { id: "yellow", label: "Pěšec", hint: "Žlutá" },
   { id: "black", label: "Ucpání", hint: "Černá · vlastní figura" },
@@ -58,7 +58,7 @@ function hexRgba(hex: string, alpha: number): string {
 }
 
 export const BRUSH_HEX: Record<Brush, string> = {
-  green: "#3d9a4a",
+  green: "#4dcc5a",
   red: "#d94a4a",
   yellow: "#e6b422",
   blue: "#4f8ad8",

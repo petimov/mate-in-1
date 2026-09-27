@@ -579,7 +579,7 @@ export function AdminPuzzleForm() {
               className="flex min-h-0 min-w-0 flex-1 overflow-hidden"
               onSubmit={onSave}
             >
-              <div className="flex h-full min-h-0 w-[min(calc(100vh-13rem),calc(100vw-42rem))] shrink-0 flex-col px-1">
+              <div className="flex h-full min-h-0 w-[min(calc(100vh-8rem),calc(100vw-36rem))] shrink-0 flex-col px-1">
                   <PositionSetupBoard
                     boardId="admin-preview-setup"
                     className="min-h-0 flex-1"
@@ -607,33 +607,22 @@ export function AdminPuzzleForm() {
                     tool={markupTool}
                     brush={markupBrush}
                   />
-                  <Textarea
-                    id="explanation"
-                    rows={2}
-                    className="mt-0.5 min-h-0 shrink-0 resize-none px-1.5 py-0.5 text-xs"
-                    placeholder="Po správném tahu…"
-                    value={form.explanation}
-                    onChange={(e) =>
-                      setForm({ ...form, explanation: e.target.value })
-                    }
-                  />
               </div>
                 <div className="flex h-full min-w-0 flex-1 flex-col overflow-hidden px-2 py-1">
-                  <div className="flex shrink-0 flex-col gap-1">
-                  <div className="flex flex-wrap items-center gap-1">
-                    <Button type="submit" size="sm" className="h-7 px-2 text-xs" disabled={saving}>
+                  <div className="flex shrink-0 flex-wrap items-center gap-2">
+                    <Button type="submit" className="h-10 px-5 text-sm" disabled={saving}>
                       {saving ? "Ukládám…" : "Uložit"}
                     </Button>
                     {status ? (
-                      <span className="text-[11px] text-amber-600 dark:text-amber-300">
+                      <span className="text-xs text-amber-600 dark:text-amber-300">
                         {status}
                       </span>
                     ) : null}
                   </div>
-                  <div className="flex flex-wrap gap-0.5">
+                  <div className="mt-1 flex shrink-0 flex-wrap gap-1">
                     <button
                       type="button"
-                      className={`rounded px-1.5 py-0.5 text-[11px] ${markupTool === "piece" ? "bg-[#81b64c] text-zinc-950" : "bg-muted"}`}
+                      className={`rounded px-2 py-1 text-xs ${markupTool === "piece" ? "bg-[#81b64c] text-zinc-950" : "bg-muted"}`}
                       onClick={() =>
                         setMarkupTool((current) =>
                           current === "piece" ? "arrow" : "piece",
@@ -644,39 +633,23 @@ export function AdminPuzzleForm() {
                     </button>
                     <button
                       type="button"
-                      className={`rounded px-1.5 py-0.5 text-[11px] ${form.kind === "move" ? "bg-[#81b64c] text-zinc-950" : "bg-muted"}`}
+                      className={`rounded px-2 py-1 text-xs ${form.kind === "move" ? "bg-[#81b64c] text-zinc-950" : "bg-muted"}`}
                       onClick={() => setForm({ ...form, kind: "move" })}
                     >
                       Zahraj tah
                     </button>
                     <button
                       type="button"
-                      className={`rounded px-1.5 py-0.5 text-[11px] ${form.kind === "squares" ? "bg-[#81b64c] text-zinc-950" : "bg-muted"}`}
+                      className={`rounded px-2 py-1 text-xs ${form.kind === "squares" ? "bg-[#81b64c] text-zinc-950" : "bg-muted"}`}
                       onClick={() => setForm({ ...form, kind: "squares" })}
                     >
                       Označ pole
                     </button>
                   </div>
-                <MarkupPalette
-                  markup={form.markup}
-                  layer={markupLayer}
-                  phase={markupPhase}
-                  tool={markupTool}
-                  brush={markupBrush}
-                  kind={form.kind}
-                  canAfter={Boolean(afterFen)}
-                  onPhase={setMarkupPhase}
-                  onTool={setMarkupTool}
-                  onBrush={setMarkupBrush}
-                  onChange={(markup) =>
-                    setForm((current) => ({ ...current, markup }))
-                  }
-                />
-                  </div>
-                  <div className="flex min-h-0 flex-1 flex-col justify-evenly gap-2">
+                  <div className="mt-2 flex shrink-0 flex-col gap-1.5">
                 <select
                   id="chapter"
-                  className="h-8 w-full shrink-0 rounded-md border border-border bg-background px-2 text-sm"
+                  className="h-8 w-full rounded-md border border-border bg-background px-2 text-sm"
                   value={form.chapterId ?? ""}
                   onChange={(event) => {
                     const chapterId = event.target.value || null;
@@ -697,13 +670,13 @@ export function AdminPuzzleForm() {
                 <Input
                   id="title"
                   required
-                  className="h-8 shrink-0 px-2"
+                  className="h-8 px-2"
                   placeholder="Název"
                   value={form.title}
                   onChange={(e) => setForm({ ...form, title: e.target.value })}
                 />
               {form.kind === "move" ? (
-                  <div className="flex shrink-0 gap-1">
+                  <div className="flex gap-1">
                     <Input
                       id="move"
                       required
@@ -724,7 +697,7 @@ export function AdminPuzzleForm() {
                     </Button>
                   </div>
               ) : (
-                  <div className="flex shrink-0 gap-1">
+                  <div className="flex gap-1">
                     <Input
                       id="squares"
                       required
@@ -747,61 +720,76 @@ export function AdminPuzzleForm() {
                     </Button>
                   </div>
               )}
-                <div className="grid shrink-0 grid-cols-2 gap-2">
-                  <Input
-                    id="theme"
-                    className="h-8 px-2"
-                    placeholder="Téma"
-                    value={form.theme}
-                    onChange={(e) => setForm({ ...form, theme: e.target.value })}
-                  />
-                  <Input
-                    id="level"
-                    className="h-8 px-2"
-                    placeholder="Úroveň"
-                    value={form.level}
-                    onChange={(e) => setForm({ ...form, level: e.target.value })}
-                  />
-                </div>
-                <div className="grid shrink-0 grid-cols-2 gap-2">
-                  <Input
-                    id="source"
-                    className="h-8 px-2"
-                    placeholder="Partie"
-                    value={form.source}
-                    onChange={(e) => setForm({ ...form, source: e.target.value })}
-                  />
-                <Input
-                  id="videoUrl"
-                  className="h-8 px-2"
-                  placeholder="Video URL"
-                  value={form.videoUrl}
-                  onChange={(e) => setForm({ ...form, videoUrl: e.target.value })}
+                  </div>
+                  <div className="mt-2 flex min-h-0 flex-1 flex-col overflow-y-auto">
+                  <details className="shrink-0 border-t border-border pt-1">
+                    <summary className="cursor-pointer select-none px-1 py-1 text-sm text-muted-foreground hover:text-foreground">
+                      Značky
+                    </summary>
+                    <div className="px-0.5 pb-2">
+                <MarkupPalette
+                  markup={form.markup}
+                  layer={markupLayer}
+                  phase={markupPhase}
+                  tool={markupTool}
+                  brush={markupBrush}
+                  kind={form.kind}
+                  canAfter={Boolean(afterFen)}
+                  onPhase={setMarkupPhase}
+                  onTool={setMarkupTool}
+                  onBrush={setMarkupBrush}
+                  onChange={(markup) =>
+                    setForm((current) => ({ ...current, markup }))
+                  }
                 />
-                </div>
+                    </div>
+                  </details>
+                  <details className="shrink-0 border-t border-border pt-1">
+                    <summary className="cursor-pointer select-none px-1 py-1 text-sm text-muted-foreground hover:text-foreground">
+                      Vysvětlení
+                    </summary>
+                    <div className="flex flex-col gap-1.5 px-0.5 pb-2">
                 <Textarea
                   id="hint"
                   rows={3}
-                  className="min-h-[3rem] resize-none px-2 py-1.5 text-sm"
+                  className="min-h-[4rem] resize-y px-2 py-1.5 text-sm"
                   placeholder="Zadání"
                   value={form.hint}
                   onChange={(e) => setForm({ ...form, hint: e.target.value })}
                 />
-                <div className="flex min-h-0 flex-1 flex-col gap-1">
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="text-xs text-muted-foreground">Špatné tahy</span>
+                  <Textarea
+                    id="explanation"
+                    rows={5}
+                    className="min-h-[6rem] resize-y px-2 py-1.5 text-sm"
+                    placeholder="Po správném tahu…"
+                    value={form.explanation}
+                    onChange={(e) =>
+                      setForm({ ...form, explanation: e.target.value })
+                    }
+                  />
+                    </div>
+                  </details>
+                  <details className="shrink-0 border-t border-border pt-1">
+                    <summary className="cursor-pointer select-none px-1 py-1 text-sm text-muted-foreground hover:text-foreground">
+                      Špatné tahy
+                      {form.wrongReplies.length
+                        ? ` (${form.wrongReplies.length})`
+                        : ""}
+                    </summary>
+                    <div className="px-0.5 pb-2">
+                  <div className="mb-1 flex justify-end">
                     <Button
                       type="button"
                       variant="outline"
                       size="sm"
-                      className="h-7 px-2 text-xs"
+                      className="h-8 px-2 text-xs"
                       disabled={!isValidFen(form.fen)}
                       onClick={addWrongReply}
                     >
                       + tah
                     </Button>
                   </div>
-                  <div className="min-h-0 flex-1 space-y-1 overflow-y-auto">
+                  <div className="space-y-1">
                     {form.wrongReplies.map((reply, index) => (
                       <div key={index} className="flex items-center gap-1">
                         <Button
@@ -853,7 +841,43 @@ export function AdminPuzzleForm() {
                       </div>
                     ))}
                   </div>
-                </div>
+                    </div>
+                  </details>
+                  <details className="shrink-0 border-t border-border pt-1">
+                    <summary className="cursor-pointer select-none px-1 py-1 text-sm text-muted-foreground hover:text-foreground">
+                      Údaje
+                    </summary>
+                    <div className="grid grid-cols-2 gap-2 px-0.5 pb-2">
+                  <Input
+                    id="theme"
+                    className="h-8 px-2"
+                    placeholder="Téma"
+                    value={form.theme}
+                    onChange={(e) => setForm({ ...form, theme: e.target.value })}
+                  />
+                  <Input
+                    id="level"
+                    className="h-8 px-2"
+                    placeholder="Úroveň"
+                    value={form.level}
+                    onChange={(e) => setForm({ ...form, level: e.target.value })}
+                  />
+                  <Input
+                    id="source"
+                    className="h-8 px-2"
+                    placeholder="Partie"
+                    value={form.source}
+                    onChange={(e) => setForm({ ...form, source: e.target.value })}
+                  />
+                <Input
+                  id="videoUrl"
+                  className="h-8 px-2"
+                  placeholder="Video URL"
+                  value={form.videoUrl}
+                  onChange={(e) => setForm({ ...form, videoUrl: e.target.value })}
+                />
+                    </div>
+                  </details>
                   </div>
               </div>
             </form>

@@ -36,11 +36,6 @@ import {
   chapterSideOf,
   chapterSideLabel,
   chapterSideShort,
-  CH_MAT,
-  CH_MAT_VEZI,
-  CH_MAT_STRELCEM,
-  CH_MAT_KONEM,
-  CH_MAT_DAMOU,
   type Chapter,
   type Curriculum,
 } from "@/lib/curriculum";
@@ -91,13 +86,7 @@ export function CurriculumTree({
 }: CurriculumTreeProps) {
   const [newCourse, setNewCourse] = useState("");
   const [newChapter, setNewChapter] = useState("");
-  const [open, setOpen] = useState<Record<string, boolean>>({
-    [CH_MAT]: true,
-    [CH_MAT_VEZI]: true,
-    [CH_MAT_STRELCEM]: true,
-    [CH_MAT_KONEM]: true,
-    [CH_MAT_DAMOU]: true,
-  });
+  const [open, setOpen] = useState<Record<string, boolean>>({});
   const [renameId, setRenameId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
   const [renameCourseId, setRenameCourseId] = useState<string | null>(null);
@@ -192,7 +181,11 @@ export function CurriculumTree({
       parentId ? `Nová podkapitola „${title}“` : `Nová kapitola „${title}“`,
     );
     if (!parentId) setNewChapter("");
-    if (parentId) setOpen((current) => ({ ...current, [parentId]: true }));
+    setOpen((current) => ({
+      ...current,
+      [id]: true,
+      ...(parentId ? { [parentId]: true } : {}),
+    }));
     onSelectChapter(id);
   }
 
@@ -364,18 +357,21 @@ export function CurriculumTree({
     return walk(null);
   }
 
+  function openAncestors(chapterId: string) {
+    setOpen((current) => {
+      const next = { ...current };
+      let id: string | null = chapterId;
+      while (id) {
+        next[id] = true;
+        id = curriculum.chapters.find((item) => item.id === id)?.parentId ?? null;
+      }
+      return next;
+    });
+  }
+
   function revealPuzzle(puzzle: Puzzle) {
     if (puzzle.chapterId) {
-      setOpen((current) => {
-        const next = { ...current };
-        let id: string | null = puzzle.chapterId ?? null;
-        while (id) {
-          next[id] = true;
-          id =
-            curriculum.chapters.find((item) => item.id === id)?.parentId ?? null;
-        }
-        return next;
-      });
+      openAncestors(puzzle.chapterId);
       onSelectChapter(puzzle.chapterId);
     }
     onSelectPuzzle(puzzle);
@@ -609,8 +605,14 @@ export function CurriculumTree({
             setOpen={setOpen}
             setRenameId={setRenameId}
             setRenameValue={setRenameValue}
-            onSelectChapter={onSelectChapter}
-            onSelectPuzzle={onSelectPuzzle}
+            onSelectChapter={(id) => {
+              if (id) openAncestors(id);
+              onSelectChapter(id);
+            }}
+            onSelectPuzzle={(puzzle) => {
+              if (puzzle.chapterId) openAncestors(puzzle.chapterId);
+              onSelectPuzzle(puzzle);
+            }}
             onRename={renameChapter}
             onDelete={deleteChapter}
             onMove={moveChapter}
@@ -713,7 +715,7 @@ function ChapterNode({
   const branchSelected = branch.filter((item) => selectedSet.has(item.id)).length;
   const branchAll = branch.length > 0 && branchSelected === branch.length;
   const branchSome = branchSelected > 0 && !branchAll;
-  const expanded = open[chapter.id] !== false;
+  const expanded = open[chapter.id] === true;
 
   return (
     <div
@@ -784,7 +786,7 @@ function ChapterNode({
             >
               {chapter.title}
               <span className="ml-2 text-[10px] text-muted-foreground">
-                {items.length}
+                {kids.length + items.length}
               </span>
             </button>
           )}

@@ -419,7 +419,7 @@ export function MarkupEditor({
                       onClick={() => setBrush(item.id)}
                     >
                       <span
-                        className="size-5 shrink-0 rounded-full border border-black/15"
+                        className="size-8 shrink-0 rounded-full border border-black/20"
                         style={{ backgroundColor: BRUSH_HEX[item.id] }}
                       />
                       <span>
