@@ -23,6 +23,8 @@ import {
   DEMO_CURRICULUM,
   bindPuzzlesToCurriculum,
   childChapters,
+  chapterChain,
+  chapterSideOf,
   nextSort,
   sortChapters,
   withMateSubchapters,
@@ -515,6 +517,10 @@ export function AdminPuzzleForm() {
     markupPhase === "after" && afterFen ? afterFen : form.fen;
   const markupLayer =
     markupPhase === "after" ? form.markup.after : form.markup.before;
+  const chapterPlace = placementOf(
+    curriculum,
+    selectedChapterId ?? form.chapterId,
+  );
 
   return (
     <div className="flex min-h-0 w-full flex-1 flex-col overflow-hidden">
@@ -606,6 +612,11 @@ export function AdminPuzzleForm() {
                     }
                     tool={markupTool}
                     brush={markupBrush}
+                    orientation={
+                      form.chapterId
+                        ? chapterSideOf(curriculum.chapters, form.chapterId)
+                        : "white"
+                    }
                   />
               </div>
                 <div className="flex h-full min-w-0 flex-1 flex-col overflow-hidden px-2 py-1">
@@ -647,26 +658,6 @@ export function AdminPuzzleForm() {
                     </button>
                   </div>
                   <div className="mt-2 flex shrink-0 flex-col gap-1.5">
-                <select
-                  id="chapter"
-                  className="h-8 w-full rounded-md border border-border bg-background px-2 text-sm"
-                  value={form.chapterId ?? ""}
-                  onChange={(event) => {
-                    const chapterId = event.target.value || null;
-                    setForm({ ...form, chapterId });
-                    setSelectedChapterId(chapterId);
-                    if (form.id) {
-                      void onMovePuzzle(form.id, chapterId);
-                    }
-                  }}
-                >
-                  <option value="">Nezařazené</option>
-                  {chapterOptions(curriculum, courseId).map((item) => (
-                    <option key={item.id} value={item.id}>
-                      {item.label}
-                    </option>
-                  ))}
-                </select>
                 <Input
                   id="title"
                   required
@@ -676,12 +667,12 @@ export function AdminPuzzleForm() {
                   onChange={(e) => setForm({ ...form, title: e.target.value })}
                 />
               {form.kind === "move" ? (
-                  <div className="flex gap-1">
+                  <div className="flex items-center gap-1">
                     <Input
                       id="move"
                       required
-                      className="h-8 px-2"
-                      placeholder="Řešení UCI"
+                      className="h-8 w-24 shrink-0 px-2"
+                      placeholder="UCI"
                       value={form.move}
                       onChange={(e) => setForm({ ...form, move: e.target.value })}
                     />
@@ -749,14 +740,6 @@ export function AdminPuzzleForm() {
                       Vysvětlení
                     </summary>
                     <div className="flex flex-col gap-1.5 px-0.5 pb-2">
-                <Textarea
-                  id="hint"
-                  rows={3}
-                  className="min-h-[4rem] resize-y px-2 py-1.5 text-sm"
-                  placeholder="Zadání"
-                  value={form.hint}
-                  onChange={(e) => setForm({ ...form, hint: e.target.value })}
-                />
                   <Textarea
                     id="explanation"
                     rows={5}
@@ -848,6 +831,36 @@ export function AdminPuzzleForm() {
                       Údaje
                     </summary>
                     <div className="grid grid-cols-2 gap-2 px-0.5 pb-2">
+                  <div className="col-span-2 grid gap-1 text-sm">
+                    <p>
+                      <span className="text-muted-foreground">Kapitola: </span>
+                      {chapterPlace.chapter}
+                    </p>
+                    <p>
+                      <span className="text-muted-foreground">Podkapitola: </span>
+                      {chapterPlace.sub}
+                    </p>
+                  </div>
+                  <select
+                    id="chapter"
+                    className="col-span-2 h-8 w-full rounded-md border border-border bg-background px-2 text-sm"
+                    value={form.chapterId ?? ""}
+                    onChange={(event) => {
+                      const chapterId = event.target.value || null;
+                      setForm({ ...form, chapterId });
+                      setSelectedChapterId(chapterId);
+                      if (form.id) {
+                        void onMovePuzzle(form.id, chapterId);
+                      }
+                    }}
+                  >
+                    <option value="">Nezařazené</option>
+                    {chapterOptions(curriculum, courseId).map((item) => (
+                      <option key={item.id} value={item.id}>
+                        {item.label}
+                      </option>
+                    ))}
+                  </select>
                   <Input
                     id="theme"
                     className="h-8 px-2"
@@ -875,6 +888,13 @@ export function AdminPuzzleForm() {
                   placeholder="Video URL"
                   value={form.videoUrl}
                   onChange={(e) => setForm({ ...form, videoUrl: e.target.value })}
+                />
+                <Input
+                  id="hint"
+                  className="col-span-2 h-8 px-2"
+                  placeholder="Zadání"
+                  value={form.hint}
+                  onChange={(e) => setForm({ ...form, hint: e.target.value })}
                 />
                     </div>
                   </details>
@@ -928,6 +948,19 @@ export function AdminPuzzleForm() {
       />
     </div>
   );
+}
+
+function placementOf(
+  curriculum: Curriculum,
+  chapterId: string | null,
+): { chapter: string; sub: string } {
+  if (!chapterId) return { chapter: "Nezařazené", sub: "—" };
+  const chain = chapterChain(curriculum.chapters, chapterId);
+  if (chain.length === 0) return { chapter: "Nezařazené", sub: "—" };
+  return {
+    chapter: chain[0]?.title ?? "—",
+    sub: chain.slice(1).map((item) => item.title).join(" / ") || "—",
+  };
 }
 
 function chapterOptions(curriculum: Curriculum, courseId: string) {

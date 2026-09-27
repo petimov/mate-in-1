@@ -63,6 +63,7 @@ type PositionSetupBoardProps = {
   onMarkupChange?: (markup: BoardMarkup) => void;
   tool?: SetupTool;
   brush?: Brush;
+  orientation?: "white" | "black";
 };
 
 export function PositionSetupBoard({
@@ -76,6 +77,7 @@ export function PositionSetupBoard({
   onMarkupChange,
   tool = "piece",
   brush = "green",
+  orientation = "white",
 }: PositionSetupBoardProps) {
   const { board, pieces } = useBoardAppearance();
   const rootRef = useRef<HTMLDivElement>(null);
@@ -245,6 +247,7 @@ export function PositionSetupBoard({
     () => ({
       id: boardId,
       position: displayFen,
+      boardOrientation: orientation,
       pieces,
       allowDragging: !spare,
       allowDragOffBoard: true,
@@ -266,6 +269,7 @@ export function PositionSetupBoard({
       board,
       boardId,
       displayFen,
+      orientation,
       layer,
       spare,
       onPieceDrop,
@@ -287,7 +291,7 @@ export function PositionSetupBoard({
       <div data-setup-chrome>
         <PieceTray
           pieces={pieces}
-          types={BLACK_TRAY}
+          types={orientation === "black" ? WHITE_TRAY : BLACK_TRAY}
           selected={spare}
           onSelect={setSpare}
         />
@@ -301,8 +305,12 @@ export function PositionSetupBoard({
             : { height: "100%", aspectRatio: "1", maxWidth: "100%" }
         }
       >
-          <BoardFrame fen={displayFen} className="h-full w-full">
-            <Chessboard key={`${board.id}-${boardId}`} options={options} />
+          <BoardFrame
+            orientation={orientation}
+            fen={displayFen}
+            className="h-full w-full"
+          >
+            <Chessboard key={`${board.id}-${boardId}-${orientation}`} options={options} />
           </BoardFrame>
       </div>
       <div
@@ -347,7 +355,7 @@ export function PositionSetupBoard({
         </div>
         <PieceTray
           pieces={pieces}
-          types={WHITE_TRAY}
+          types={orientation === "black" ? BLACK_TRAY : WHITE_TRAY}
           selected={spare}
           onSelect={setSpare}
         />
