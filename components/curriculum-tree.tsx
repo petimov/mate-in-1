@@ -406,9 +406,23 @@ export function CurriculumTree({
     function onKey(event: KeyboardEvent) {
       const target = event.target as HTMLElement | null;
       if (target?.closest("input, textarea, select")) return;
-      if (event.key !== "ArrowUp" && event.key !== "ArrowDown") return;
+      if (event.ctrlKey || event.metaKey) return;
+      const up =
+        event.key === "ArrowUp" ||
+        event.code === "KeyZ" ||
+        event.code === "KeyY" ||
+        event.key === "z" ||
+        event.key === "Z" ||
+        event.key === "y" ||
+        event.key === "Y";
+      const down =
+        event.key === "ArrowDown" ||
+        event.code === "KeyX" ||
+        event.key === "x" ||
+        event.key === "X";
+      if (!up && !down) return;
       event.preventDefault();
-      const dir: -1 | 1 = event.key === "ArrowUp" ? -1 : 1;
+      const dir: -1 | 1 = up ? -1 : 1;
       if (event.shiftKey || event.altKey) {
         const puzzle = puzzles.find((item) => item.id === selectedPuzzleId);
         if (puzzle) movePuzzleDir(puzzle, dir);
