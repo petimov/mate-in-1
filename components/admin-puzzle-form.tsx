@@ -59,7 +59,6 @@ import {
 import { isUuid, puzzleKind, puzzleToSaveBody } from "@/lib/puzzles";
 import { parseSquares } from "@/lib/squares";
 import type { Puzzle, PuzzleKind, WrongReply } from "@/lib/types";
-import { cn } from "@/lib/utils";
 
 function emptyForm() {
   return {
@@ -748,41 +747,6 @@ export function AdminPuzzleForm() {
                       Označ pole
                     </Button>
                   </div>
-                  <div className="mt-1 flex shrink-0 flex-wrap items-center gap-1">
-                    <span className="pr-1 text-xs text-muted-foreground">
-                      Z/X
-                    </span>
-                    <button
-                      type="button"
-                      className={cn(
-                        "rounded px-2 py-1 text-xs",
-                        stepReset === "keep"
-                          ? "bg-primary text-primary-foreground"
-                          : "bg-transparent",
-                      )}
-                      onClick={() => {
-                        setStepReset("keep");
-                        writeAdminStepReset("keep");
-                      }}
-                    >
-                      Nechat Před/Po
-                    </button>
-                    <button
-                      type="button"
-                      className={cn(
-                        "rounded px-2 py-1 text-xs",
-                        stepReset === "before"
-                          ? "bg-primary text-primary-foreground"
-                          : "bg-transparent",
-                      )}
-                      onClick={() => {
-                        setStepReset("before");
-                        writeAdminStepReset("before");
-                      }}
-                    >
-                      Vždy před tahem
-                    </button>
-                  </div>
                   <div className="mt-2 flex shrink-0 flex-col gap-1.5">
                 <Input
                   id="title"
@@ -1080,6 +1044,35 @@ export function AdminPuzzleForm() {
                   value={form.hint}
                   onChange={(e) => setForm({ ...form, hint: e.target.value })}
                 />
+                    </div>
+                  </details>
+                  <details className="shrink-0 border-t border-border pt-1">
+                    <summary className="cursor-pointer select-none px-1 py-1 text-sm text-muted-foreground hover:text-foreground">
+                      Z/X
+                    </summary>
+                    <div className="flex flex-wrap gap-1 px-0.5 pb-2">
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant={stepReset === "keep" ? "default" : "ghost"}
+                        onClick={() => {
+                          setStepReset("keep");
+                          writeAdminStepReset("keep");
+                        }}
+                      >
+                        Nechat Před/Po
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant={stepReset === "before" ? "default" : "ghost"}
+                        onClick={() => {
+                          setStepReset("before");
+                          writeAdminStepReset("before");
+                        }}
+                      >
+                        Vždy před tahem
+                      </Button>
                     </div>
                   </details>
                   </div>
