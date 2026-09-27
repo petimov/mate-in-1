@@ -480,7 +480,7 @@ export function CurriculumTree({
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col gap-1">
+    <div className="flex h-full min-h-0 flex-col gap-1 text-[14px] leading-snug">
       <div className="flex shrink-0 flex-wrap items-center gap-1">
         {courses.map((item) => (
           <div
@@ -495,7 +495,7 @@ export function CurriculumTree({
             {renameCourseId === item.id ? (
               <Input
                 value={renameCourseValue}
-                className="h-6 w-28 text-xs"
+                className="h-7 w-28 text-[14px]"
                 autoFocus
                 onChange={(event) => setRenameCourseValue(event.target.value)}
                 onBlur={() => renameCourse(item.id)}
@@ -507,7 +507,7 @@ export function CurriculumTree({
             ) : (
               <button
                 type="button"
-                className="px-1 py-0.5 text-xs"
+                className="px-1 py-0.5 text-[14px]"
                 onClick={() => onSelectCourse(item.id)}
               >
                 {item.title}
@@ -546,21 +546,21 @@ export function CurriculumTree({
         ))}
         <Input
           placeholder="Nový kurz"
-          className="h-6 min-w-24 flex-1 px-1.5 text-xs"
+          className="h-7 min-w-24 flex-1 px-1.5 text-[14px]"
           value={newCourse}
           onChange={(event) => setNewCourse(event.target.value)}
           onKeyDown={(event) => {
             if (event.key === "Enter") addCourse();
           }}
         />
-        <Button type="button" variant="outline" className="h-6 px-1.5 text-xs" onClick={addCourse}>
+        <Button type="button" variant="outline" className="h-7 px-1.5 text-[14px]" onClick={addCourse}>
           <Plus className="size-3" />
           Kurz
         </Button>
         <Button
           type="button"
           variant="outline"
-          className="h-6 px-1.5 text-xs"
+          className="h-7 px-1.5 text-[14px]"
           disabled={!canUndo}
           title={undoLabel ? `Zpět: ${undoLabel} (Ctrl+Z)` : "Nic k vrácení"}
           onClick={onUndo}
@@ -573,7 +573,7 @@ export function CurriculumTree({
       <div className="flex shrink-0 flex-wrap items-center gap-1">
         <button
           type="button"
-          className="text-[11px] text-muted-foreground hover:text-foreground"
+          className="text-[13px] text-muted-foreground hover:text-foreground"
           onClick={() => {
             const ids = coursePuzzleIds();
             const allOn = ids.length > 0 && ids.every((id) => selected.includes(id));
@@ -589,14 +589,14 @@ export function CurriculumTree({
         </button>
         {selected.length > 0 ? (
           <div className="flex items-center gap-1">
-            <span className="text-[11px] text-muted-foreground">
+            <span className="text-[13px] text-muted-foreground">
               {selected.length}
             </span>
             <Button
               type="button"
               variant="outline"
               size="sm"
-              className="h-6 px-1.5 text-[11px]"
+              className="h-7 px-1.5 text-[13px]"
               onClick={() => setSelected([])}
             >
               Zrušit
@@ -605,7 +605,7 @@ export function CurriculumTree({
               type="button"
               variant="destructive"
               size="sm"
-              className="h-6 px-1.5 text-[11px]"
+              className="h-7 px-1.5 text-[13px]"
               onClick={massDelete}
             >
               <Trash2 className="size-3" />
@@ -615,11 +615,11 @@ export function CurriculumTree({
         ) : null}
         <Input
           placeholder="Nová kapitola"
-          className="h-6 min-w-24 flex-1 px-1.5 text-xs"
+          className="h-7 min-w-24 flex-1 px-1.5 text-[14px]"
           value={newChapter}
           onChange={(event) => setNewChapter(event.target.value)}
         />
-        <Button type="button" variant="outline" className="h-6 px-1.5 text-xs" onClick={() => addChapter(null)}>
+        <Button type="button" variant="outline" className="h-7 px-1.5 text-[14px]" onClick={() => addChapter(null)}>
           <FolderPlus className="size-3" />
           Kapitola
         </Button>
@@ -817,11 +817,11 @@ function ChapterNode({
           ) : (
             <button
               type="button"
-              className="min-w-0 flex-1 truncate text-left text-[13px] leading-5"
+              className="min-w-0 flex-1 truncate text-left text-[15px] leading-5"
               onClick={() => onSelectChapter(chapter.id)}
             >
               {chapter.title}
-              <span className="ml-2 text-[10px] text-muted-foreground">
+              <span className="ml-2 text-[12px] text-muted-foreground">
                 {kids.length + items.length}
               </span>
             </button>
@@ -831,7 +831,7 @@ function ChapterNode({
           <button
             type="button"
             title={chapterKindOf(chapter) === "cviceni" ? "Cvičení" : "Výklad"}
-            className="w-4 shrink-0 rounded text-center text-[10px] font-semibold uppercase text-muted-foreground hover:bg-foreground/10 hover:text-foreground"
+            className="w-5 shrink-0 rounded text-center text-[12px] font-semibold uppercase text-muted-foreground hover:bg-foreground/10 hover:text-foreground"
             onClick={() => onCycleKind(chapter)}
           >
             {chapterKindOf(chapter) === "cviceni" ? "C" : "V"}
@@ -839,7 +839,7 @@ function ChapterNode({
           <button
             type="button"
             title={chapterSideLabel(chapter.side ?? chapterSideOf(chapters, chapter.id))}
-            className="w-4 shrink-0 rounded text-center text-[10px] font-semibold uppercase text-muted-foreground hover:bg-foreground/10 hover:text-foreground"
+            className="w-5 shrink-0 rounded text-center text-[12px] font-semibold uppercase text-muted-foreground hover:bg-foreground/10 hover:text-foreground"
             onClick={() => onCycleSide(chapter)}
           >
             {chapterSideShort(chapter.side ?? chapterSideOf(chapters, chapter.id))}
@@ -849,7 +849,7 @@ function ChapterNode({
                 type="button"
                 variant="outline"
                 size="sm"
-                className="h-5 px-1 text-[10px]"
+                className="h-6 px-1 text-[12px]"
                 onClick={() => onNewPuzzle(chapter.id)}
               >
                 +
@@ -1015,7 +1015,7 @@ function PuzzleRow({
       }}
       data-puzzle-id={puzzle.id}
       className={cn(
-        "group grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-1 rounded px-0.5 py-0 text-left text-[13px] leading-5",
+        "group grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-1 rounded px-0.5 py-0 text-left text-[15px] leading-5",
         active ? "bg-muted text-foreground" : "text-muted-foreground hover:bg-foreground/5 hover:text-foreground",
       )}
     >
@@ -1052,7 +1052,7 @@ function PuzzleRow({
         )}
       </div>
       <div className="flex shrink-0 items-center gap-0.5">
-        <span className="w-4 text-center text-[10px] uppercase text-muted-foreground">
+        <span className="w-5 text-center text-[12px] uppercase text-muted-foreground">
           {puzzleKind(puzzle) === "squares" ? "P" : "T"}
         </span>
         <div

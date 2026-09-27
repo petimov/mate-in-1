@@ -577,7 +577,7 @@ export function AdminPuzzleForm() {
 
   return (
     <div className="flex min-h-0 w-full flex-1 flex-col overflow-hidden">
-      <details className="shrink-0 text-[11px] leading-none">
+      <details className="shrink-0 text-[14px] leading-none">
         <summary className="cursor-pointer select-none px-1 py-0.5 text-muted-foreground hover:text-foreground">
           Import PGN
         </summary>
