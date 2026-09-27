@@ -61,22 +61,22 @@ function hexRgba(hex: string, alpha: number): string {
 
 export const BRUSH_HEX: Record<Brush, string> = {
   green: "#00ff22",
-  red: "#ff0033",
+  red: "#ff0000",
   yellow: "#ffe600",
   blue: "#0044ff",
   teal: "#00ffd0",
   violet: "#d400ff",
   rose: "#ff0077",
-  orange: "#ff3d00",
+  orange: "#ff8a00",
   sky: "#00c8ff",
   olive: "#b6ff00",
-  brown: "#ff6a00",
+  brown: "#6b2a00",
   black: "#000000",
 };
 
 export const BRUSH_FILL: Record<Brush, string> = {
   green: hexRgba(BRUSH_HEX.green, 0.72),
-  red: hexRgba(BRUSH_HEX.red, 0.72),
+  red: hexRgba(BRUSH_HEX.red, 0.82),
   yellow: hexRgba(BRUSH_HEX.yellow, 0.7),
   blue: hexRgba(BRUSH_HEX.blue, 0.7),
   teal: hexRgba(BRUSH_HEX.teal, 0.7),
