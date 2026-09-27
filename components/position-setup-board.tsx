@@ -341,7 +341,7 @@ export function PositionSetupBoard({
       allowDragOffBoard: !playMode,
       allowDrawingArrows: false,
       showAnimations: false,
-      arrows: toChessboardArrows(layer),
+      arrows: [],
       arrowOptions: MARKUP_ARROW_OPTIONS,
       squareStyles,
       squareRenderer,
@@ -403,6 +403,7 @@ export function PositionSetupBoard({
           <BoardFrame
             orientation={orientation}
             fen={displayFen}
+            arrows={toChessboardArrows(layer)}
             className="h-full w-full"
           >
             <Chessboard key={`${board.id}-${boardId}-${orientation}`} options={options} />

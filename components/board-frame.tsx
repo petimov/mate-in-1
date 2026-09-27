@@ -1,5 +1,9 @@
 import type { ReactNode } from "react";
 
+import {
+  LichessArrows,
+  type LichessArrow,
+} from "@/components/lichess-arrows";
 import { sideToMoveDot } from "@/lib/chess";
 import { cn } from "@/lib/utils";
 
@@ -10,6 +14,7 @@ type BoardFrameProps = {
   orientation?: "white" | "black";
   fen?: string;
   turn?: "w" | "b";
+  arrows?: LichessArrow[] | null;
   className?: string;
   children: ReactNode;
 };
@@ -18,6 +23,7 @@ export function BoardFrame({
   orientation = "white",
   fen,
   turn,
+  arrows,
   className,
   children,
 }: BoardFrameProps) {
@@ -37,7 +43,10 @@ export function BoardFrame({
           <span key={rank}>{rank}</span>
         ))}
       </div>
-      <div className="board-frame-board">{children}</div>
+      <div className="board-frame-board">
+        {children}
+        <LichessArrows arrows={arrows} orientation={orientation} />
+      </div>
       <span className="board-frame-pad" aria-hidden />
       <span className="board-frame-pad" aria-hidden />
       <div className="board-frame-files" aria-hidden>

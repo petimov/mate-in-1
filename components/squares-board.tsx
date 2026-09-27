@@ -168,7 +168,7 @@ export const SquaresBoard = forwardRef<SquaresBoardHandle, SquaresBoardProps>(
         boardOrientation: orientation,
         allowDragging: false,
         allowDrawingArrows: false,
-        arrows: toChessboardArrows(markup),
+        arrows: [],
         arrowOptions: MARKUP_ARROW_OPTIONS,
         showAnimations: false,
         pieces,
@@ -202,6 +202,7 @@ export const SquaresBoard = forwardRef<SquaresBoardHandle, SquaresBoardProps>(
         <BoardFrame
           orientation={orientation}
           fen={fen}
+          arrows={toChessboardArrows(markup)}
           className="h-full w-full"
         >
           {ready ? (

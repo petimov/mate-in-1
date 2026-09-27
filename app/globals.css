@@ -979,6 +979,12 @@ a.home-card:hover h3 {
   height: 100%;
 }
 
+.lichess-arrows {
+  z-index: 20;
+  pointer-events: none;
+  overflow: visible;
+}
+
 .board-frame-board *,
 .board-frame-board *:focus,
 .board-frame-board *:focus-visible,

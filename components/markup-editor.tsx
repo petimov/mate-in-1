@@ -282,7 +282,7 @@ export function MarkupEditor({
       allowDrawingArrows: false,
       showAnimations: true,
       animationDurationInMs: 220,
-      arrows: boardMode === "markup" ? toChessboardArrows(layer) : [],
+      arrows: [],
       arrowOptions: MARKUP_ARROW_OPTIONS,
       squareStyles,
       squareRenderer,
@@ -345,6 +345,9 @@ export function MarkupEditor({
               <BoardFrame
                 orientation={orientation}
                 fen={displayFen}
+                arrows={
+                  boardMode === "markup" ? toChessboardArrows(layer) : []
+                }
                 className="h-full w-full"
               >
                 <Chessboard key={board.id} options={options} />

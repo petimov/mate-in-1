@@ -360,7 +360,7 @@ function PlayMoveBoard({
       showAnimations: true,
       animationDurationInMs: 250,
       pieces,
-      arrows: toChessboardArrows(layer),
+      arrows: [],
       arrowOptions: MARKUP_ARROW_OPTIONS,
       squareStyles,
       squareRenderer,
@@ -422,6 +422,7 @@ function PlayMoveBoard({
       <BoardFrame
         orientation={orientation}
         fen={position}
+        arrows={toChessboardArrows(layer)}
         className="aspect-square w-full"
       >
         <div

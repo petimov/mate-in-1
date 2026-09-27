@@ -47,6 +47,7 @@ import {
   emptyBoardMarkup,
   emptyPuzzleMarkup,
   isEmptyBoardMarkup,
+  type BoardMarkup,
   type Brush,
   type MarkupPhase,
 } from "@/lib/markup";
@@ -404,6 +405,20 @@ export function AdminPuzzleForm() {
         return;
       }
       if (playTarget !== null) return;
+      const count = form.wrongReplies.length;
+      const up = event.code === "KeyD" || event.key === "d" || event.key === "D";
+      const down = event.code === "KeyF" || event.key === "f" || event.key === "F";
+      if (count > 0 && (up || down)) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        const dir: -1 | 1 = up ? -1 : 1;
+        setWrongEdit((current) => {
+          if (current === null) return dir < 0 ? count - 1 : 0;
+          return (current + dir + count) % count;
+        });
+        setMarkupTool((tool) => (tool === "piece" ? "arrow" : tool));
+        return;
+      }
       if (event.key === "ArrowLeft") {
         event.preventDefault();
         setMarkupPhase("before");
@@ -413,9 +428,9 @@ export function AdminPuzzleForm() {
         setMarkupPhase("after");
       }
     }
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [playTarget]);
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, [form.wrongReplies.length, playTarget]);
 
   function loadPuzzle(puzzle: Puzzle) {
     setForm({
@@ -533,18 +548,14 @@ export function AdminPuzzleForm() {
   const startFen = startFenForLine(form.fen, form.move ? [form.move] : []);
   const editingReply =
     wrongEdit !== null ? form.wrongReplies[wrongEdit] : undefined;
-  const wrongFen =
-    editingReply?.answer && isValidFen(startFen)
-      ? fenAfterUci(startFen, editingReply.answer)
-      : null;
-  const boardFen =
-    editingReply
-      ? (wrongFen ?? startFen)
-      : markupPhase === "after" && afterFen
-        ? afterFen
-        : form.fen;
+  const previewingWrong = Boolean(editingReply?.answer);
+  const boardFen = editingReply
+    ? startFen
+    : markupPhase === "after" && afterFen
+      ? afterFen
+      : form.fen;
   const markupLayer = editingReply
-    ? (editingReply.markup ?? emptyBoardMarkup())
+    ? previewWrongMarkup(editingReply)
     : markupPhase === "after"
       ? form.markup.after
       : form.markup.before;
@@ -622,8 +633,8 @@ export function AdminPuzzleForm() {
                     boardId="admin-preview-setup"
                     className="min-h-0 flex-1"
                     fen={boardFen}
-                    playMode={wrongEdit !== null}
-                    moveLocked={Boolean(editingReply?.answer)}
+                    playMode={wrongEdit !== null && !previewingWrong}
+                    moveLocked={false}
                     onPlayMove={(uci) => {
                       if (wrongEdit === null) return;
                       const index = wrongEdit;
@@ -655,7 +666,10 @@ export function AdminPuzzleForm() {
                           const next = [...current.wrongReplies];
                           const row = next[wrongEdit];
                           if (!row) return current;
-                          next[wrongEdit] = { ...row, markup: layer };
+                          next[wrongEdit] = {
+                            ...row,
+                            markup: stripMoveArrow(layer, row.answer),
+                          };
                           return { ...current, wrongReplies: next };
                         }
                         return {
@@ -789,7 +803,10 @@ export function AdminPuzzleForm() {
                         const next = [...current.wrongReplies];
                         const row = next[wrongEdit];
                         if (!row) return current;
-                        next[wrongEdit] = { ...row, markup: layer };
+                        next[wrongEdit] = {
+                        ...row,
+                        markup: stripMoveArrow(layer, row.answer),
+                      };
                         return { ...current, wrongReplies: next };
                       });
                       return;
@@ -850,7 +867,7 @@ export function AdminPuzzleForm() {
                     </div>
                     {wrongEdit !== null ? (
                       <p className="text-xs text-muted-foreground">
-                        Na desce: špatný tah, pak pravé tlačítko — šipky a kroužky.
+                        D nahoru, F dolů. Zelená = špatný tah, ostatní = obrana.
                       </p>
                     ) : null}
                     {form.wrongReplies.map((reply, index) => (
@@ -862,7 +879,14 @@ export function AdminPuzzleForm() {
                           type="button"
                           variant="outline"
                           size="sm"
-                          className="h-8 shrink-0 px-2"
+                          className="h-8 w-[4.5rem] shrink-0 px-1 font-mono text-xs"
+                          title={
+                            wrongEdit === index && reply.answer
+                              ? "Znovu zahrát"
+                              : reply.answer && isValidFen(startFen)
+                                ? uciToSan(startFen, reply.answer)
+                                : undefined
+                          }
                           disabled={!isValidFen(form.fen)}
                           onClick={() => {
                             if (wrongEdit === index) {
@@ -879,7 +903,7 @@ export function AdminPuzzleForm() {
                             if (markupTool === "piece") setMarkupTool("arrow");
                           }}
                         >
-                          {wrongEdit === index && reply.answer ? "Znovu" : "Tah"}
+                          {reply.answer || "Tah"}
                         </Button>
                         {reply.markup && !isEmptyBoardMarkup(reply.markup) ? (
                           <span
@@ -1033,6 +1057,35 @@ export function AdminPuzzleForm() {
       />
     </div>
   );
+}
+
+function uciMoveArrow(uci: string) {
+  const move = normalizeUci(uci);
+  if (move.length < 4) return null;
+  return { from: move.slice(0, 2), to: move.slice(2, 4), color: "green" as const };
+}
+
+function previewWrongMarkup(reply: WrongReply): BoardMarkup {
+  const layer = cloneBoardMarkup(reply.markup ?? emptyBoardMarkup());
+  const move = uciMoveArrow(reply.answer);
+  if (!move) return layer;
+  layer.arrows = [
+    move,
+    ...layer.arrows.filter(
+      (arrow) => arrow.from !== move.from || arrow.to !== move.to,
+    ),
+  ];
+  return layer;
+}
+
+function stripMoveArrow(layer: BoardMarkup, uci: string): BoardMarkup {
+  const move = uciMoveArrow(uci);
+  const next = cloneBoardMarkup(layer);
+  if (!move) return next;
+  next.arrows = next.arrows.filter(
+    (arrow) => arrow.from !== move.from || arrow.to !== move.to,
+  );
+  return next;
 }
 
 function placementOf(
