@@ -24,12 +24,6 @@ const CARDS = [
     title: "Hodina s trenérkou",
     text: "Individuálně. Plán, PDF, Jednotažky.",
   },
-  {
-    href: "/pro-trenery",
-    icon: "/brand/icon2.png",
-    title: "Pro trenéry",
-    text: "Pracovní listy, plány lekcí, tisk úloh.",
-  },
 ] as const;
 
 const STEPS = [
@@ -216,7 +210,6 @@ export function HomePage() {
           </p>
           <nav>
             <Link href="/ulohy">Jednotažky</Link>
-            <Link href="/pro-trenery">Pro trenéry</Link>
             <Link href="/ucet">Nastavení</Link>
           </nav>
         </div>

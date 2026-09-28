@@ -25,9 +25,6 @@ export function SiteFooter() {
           <Link href="/ucet" className="hover:text-foreground">
             Nastavení
           </Link>
-          <Link href="/pro-trenery" className="hover:text-foreground">
-            Pro trenéry
-          </Link>
         </div>
       </div>
     </footer>

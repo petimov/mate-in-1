@@ -516,7 +516,7 @@ export function AdminPuzzleForm() {
     });
     setSelectedChapterId(puzzle.chapterId ?? null);
     const hasWrong = Boolean(puzzle.wrongReplies?.length);
-    setWrongOpen(hasWrong);
+    setWrongOpen((open) => open || hasWrong);
     setWrongEdit(hasWrong ? 0 : null);
     setWrongHover(null);
     setStatus(null);
@@ -722,7 +722,6 @@ export function AdminPuzzleForm() {
                 setSelectedChapterId(chapterId);
                 setForm({ ...emptyForm(), chapterId });
                 setWrongEdit(null);
-                setWrongOpen(false);
                 setWrongHover(null);
                 setStatus(null);
               }}
@@ -969,28 +968,33 @@ export function AdminPuzzleForm() {
                   />
                     </div>
                   </details>
-                  <details
-                    className="shrink-0 border-t border-border pt-1"
-                    open={wrongOpen}
-                    onToggle={(event) => {
-                      const opened = event.currentTarget.open;
-                      setWrongOpen(opened);
-                      if (!opened) {
-                        setWrongEdit(null);
-                        setWrongHover(null);
-                        return;
-                      }
-                      if (form.wrongReplies.length === 0) return;
-                      setWrongEdit((current) => (current === null ? 0 : current));
-                      setMarkupTool((tool) => (tool === "piece" ? "arrow" : tool));
-                    }}
-                  >
-                    <summary className="cursor-pointer select-none px-1 py-1 text-sm text-muted-foreground hover:text-foreground">
+                  <div className="shrink-0 border-t border-border pt-1">
+                    <button
+                      type="button"
+                      className="w-full cursor-pointer select-none px-1 py-1 text-left text-sm text-muted-foreground hover:text-foreground"
+                      onClick={() => {
+                        if (wrongOpen) {
+                          setWrongOpen(false);
+                          setWrongEdit(null);
+                          setWrongHover(null);
+                          return;
+                        }
+                        setWrongOpen(true);
+                        if (form.wrongReplies.length === 0) return;
+                        setWrongEdit((current) =>
+                          current === null ? 0 : current,
+                        );
+                        setMarkupTool((tool) =>
+                          tool === "piece" ? "arrow" : tool,
+                        );
+                      }}
+                    >
                       Špatné tahy
                       {form.wrongReplies.length
                         ? ` (${form.wrongReplies.length})`
                         : ""}
-                    </summary>
+                    </button>
+                    {wrongOpen ? (
                     <div className="px-0.5 pb-2">
                   <div className="space-y-1">
                     <div className="flex flex-wrap items-center gap-2">
@@ -1151,7 +1155,8 @@ export function AdminPuzzleForm() {
                     ))}
                   </div>
                     </div>
-                  </details>
+                    ) : null}
+                  </div>
                   <details className="shrink-0 border-t border-border pt-1">
                     <summary className="cursor-pointer select-none px-1 py-1 text-sm text-muted-foreground hover:text-foreground">
                       Údaje

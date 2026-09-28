@@ -15,7 +15,6 @@ import { cn } from "@/lib/utils";
 const LINKS = [
   { href: "/ulohy", label: "Jednotažky" },
   { href: "/ulohy/trenink", label: "Trénink" },
-  { href: "/pro-trenery", label: "Pro trenéry" },
 ];
 
 const HOME_LINKS = [
