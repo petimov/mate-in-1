@@ -109,6 +109,28 @@ export function uciToSan(fen: string, uci: string): string {
   return last?.san ?? uci;
 }
 
+const CZECH_PIECE: Record<string, string> = {
+  K: "K",
+  Q: "D",
+  R: "V",
+  B: "S",
+  N: "J",
+};
+
+export function sanToCzech(san: string): string {
+  const trimmed = san.trim();
+  if (!trimmed) return trimmed;
+  const castle = trimmed.replaceAll("O", "0");
+  if (castle.startsWith("0-0")) return castle;
+  return trimmed.replace(/[KQRBN]/g, (letter) => CZECH_PIECE[letter] ?? letter);
+}
+
+export function uciToCzechSan(fen: string, uci: string): string {
+  const san = uciToSan(fen, uci);
+  if (!san || san === uci) return uci;
+  return sanToCzech(san);
+}
+
 export type LinePly = {
   san: string;
   uci: string;

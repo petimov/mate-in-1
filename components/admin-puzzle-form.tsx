@@ -20,15 +20,18 @@ import {
 } from "@/lib/admin-history";
 import {
   readAdminStepReset,
+  readAdminWrongMode,
   writeAdminStepReset,
+  writeAdminWrongMode,
   type AdminStepReset,
+  type AdminWrongMode,
 } from "@/lib/admin-prefs";
 import {
   fenAfterUci,
   isValidFen,
   normalizeUci,
   startFenForLine,
-  uciToSan,
+  uciToCzechSan,
 } from "@/lib/chess";
 import {
   normalizeReplyCode,
@@ -93,12 +96,13 @@ export function AdminPuzzleForm() {
   const [playTarget, setPlayTarget] = useState<"solution" | null>(null);
   const [wrongEdit, setWrongEdit] = useState<number | null>(null);
   const [wrongOpen, setWrongOpen] = useState(false);
-  const [wrongHover, setWrongHover] = useState<number | "sol" | null>(null);
+  const [wrongHover, setWrongHover] = useState<number | null>(null);
   const [boardOpen, setBoardOpen] = useState(false);
   const [markupTool, setMarkupTool] = useState<SetupTool>("arrow");
   const [markupBrush, setMarkupBrush] = useState<Brush>("green");
   const [markupPhase, setMarkupPhase] = useState<MarkupPhase>("before");
   const [stepReset, setStepReset] = useState<AdminStepReset>("keep");
+  const [wrongMode, setWrongMode] = useState<AdminWrongMode>("first");
   const [historySize, setHistorySize] = useState(0);
   const [undoLabel, setUndoLabel] = useState<string | null>(null);
   const historyRef = useRef<AdminSnapshot<ReturnType<typeof emptyForm>>[]>([]);
@@ -406,6 +410,7 @@ export function AdminPuzzleForm() {
 
   useEffect(() => {
     setStepReset(readAdminStepReset());
+    setWrongMode(readAdminWrongMode());
   }, []);
 
   useEffect(() => {
@@ -422,6 +427,17 @@ export function AdminPuzzleForm() {
       const up = event.code === "KeyD" || event.key === "d" || event.key === "D";
       const down = event.code === "KeyF" || event.key === "f" || event.key === "F";
       const inWrongList = wrongOpen || wrongEdit !== null;
+      if (
+        wrongMode === "click" &&
+        (event.key === "ArrowLeft" || event.key === "ArrowRight")
+      ) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        setWrongEdit(null);
+        setWrongHover(null);
+        setMarkupPhase(event.key === "ArrowLeft" ? "before" : "after");
+        return;
+      }
       if (count > 0 && (up || down)) {
         event.preventDefault();
         event.stopImmediatePropagation();
@@ -443,16 +459,18 @@ export function AdminPuzzleForm() {
         event.preventDefault();
         event.stopImmediatePropagation();
         const dir = event.key === "ArrowLeft" ? -1 : 1;
-        const total = count + 1;
-        const pos = wrongEdit === null ? 0 : wrongEdit + 1;
-        const next = (pos + dir + total) % total;
         setWrongOpen(true);
-        if (next === 0) {
-          setWrongEdit(null);
-          setWrongHover("sol");
+        setWrongHover(null);
+        if (wrongMode === "first") {
+          setWrongEdit((current) => {
+            if (current === null) return dir < 0 ? count - 1 : 0;
+            return (current + dir + count) % count;
+          });
         } else {
-          setWrongEdit(next - 1);
-          setWrongHover(null);
+          const total = count + 1;
+          const pos = wrongEdit === null ? 0 : wrongEdit + 1;
+          const next = (pos + dir + total) % total;
+          setWrongEdit(next === 0 ? null : next - 1);
         }
         setMarkupTool((tool) => (tool === "piece" ? "arrow" : tool));
         return;
@@ -468,22 +486,16 @@ export function AdminPuzzleForm() {
     }
     window.addEventListener("keydown", onKey, true);
     return () => window.removeEventListener("keydown", onKey, true);
-  }, [form.wrongReplies.length, playTarget, wrongEdit, wrongOpen]);
+  }, [form.wrongReplies.length, playTarget, wrongEdit, wrongMode, wrongOpen]);
 
   useEffect(() => {
-    const id =
-      wrongEdit !== null
-        ? String(wrongEdit)
-        : wrongHover === "sol"
-          ? "sol"
-          : null;
-    if (id === null) return;
+    if (wrongEdit === null) return;
     const active = document.activeElement as HTMLElement | null;
     if (active?.closest("input, textarea, select")) return;
     document
-      .querySelector<HTMLElement>(`[data-wrong-tah="${id}"]`)
+      .querySelector<HTMLElement>(`[data-wrong-tah="${wrongEdit}"]`)
       ?.focus();
-  }, [wrongEdit, wrongHover]);
+  }, [wrongEdit]);
 
   useEffect(() => {
     if (wrongEdit === null) return;
@@ -517,7 +529,7 @@ export function AdminPuzzleForm() {
     setSelectedChapterId(puzzle.chapterId ?? null);
     const hasWrong = Boolean(puzzle.wrongReplies?.length);
     setWrongOpen((open) => open || hasWrong);
-    setWrongEdit(hasWrong ? 0 : null);
+    setWrongEdit(wrongMode === "first" && hasWrong ? 0 : null);
     setWrongHover(null);
     setStatus(null);
     if (stepReset === "before") setMarkupPhase("before");
@@ -610,7 +622,7 @@ export function AdminPuzzleForm() {
   const solutionUci = form.kind === "move" ? normalizeUci(form.move) : "";
   const solutionSan =
     solutionUci && isValidFen(form.fen)
-      ? uciToSan(form.fen, solutionUci)
+      ? uciToCzechSan(form.fen, solutionUci)
       : "";
   const afterFen =
     solutionUci && isValidFen(form.fen)
@@ -618,57 +630,54 @@ export function AdminPuzzleForm() {
       : null;
   const startFen = startFenForLine(form.fen, form.move ? [form.move] : []);
   const inWrong = wrongEdit !== null;
+  const inWrongPanel = wrongOpen || inWrong;
   const selectedReply = inWrong ? form.wrongReplies[wrongEdit] : undefined;
   const boardIndex =
-    wrongHover === "sol"
-      ? null
+    wrongMode === "click"
+      ? wrongEdit
       : typeof wrongHover === "number"
         ? wrongHover
         : wrongEdit;
   const boardReply =
     boardIndex !== null ? form.wrongReplies[boardIndex] : undefined;
   const previewingWrong = Boolean(boardReply?.answer);
-  const viewingSolution = !boardReply && (wrongOpen || wrongHover === "sol");
   const hoverOther = wrongHover !== null && wrongHover !== wrongEdit;
-  const wrongAfterFen =
-    previewingWrong && boardReply?.answer
-      ? fenAfterUci(startFen, boardReply.answer)
-      : null;
-  const boardFen = boardReply
-    ? (wrongAfterFen ?? startFen)
-    : viewingSolution && afterFen
-      ? afterFen
+  const clickClean = wrongMode === "click" && !boardReply;
+  const showingMate = Boolean(
+    clickClean && markupPhase === "after" && afterFen && solutionUci,
+  );
+  const wrongUcis = form.wrongReplies
+    .map((reply) => reply.answer)
+    .filter(Boolean);
+  const boardFen = showingMate
+    ? afterFen!
+    : clickClean || boardReply || inWrongPanel
+      ? startFen
       : markupPhase === "after" && afterFen
         ? afterFen
         : form.fen;
-  const markupLayer = boardReply
-    ? previewingWrong
-      ? withWrongMoveArrow(
-          recolorGreenDefense(boardReply.markup ?? emptyBoardMarkup()),
-          boardReply.answer,
-        )
-      : emptyBoardMarkup()
-    : viewingSolution && solutionUci
-      ? withWrongMoveArrow(
-          cloneBoardMarkup(
-            markupPhase === "after" ? form.markup.after : form.markup.before,
-          ),
-          solutionUci,
-        )
-      : markupPhase === "after"
-        ? form.markup.after
-        : form.markup.before;
-  const wrongMoveSquares =
-    previewingWrong && boardReply?.answer
-      ? [
-          normalizeUci(boardReply.answer).slice(0, 2),
-          normalizeUci(boardReply.answer).slice(2, 4),
-        ].filter((square) => square.length === 2)
-      : viewingSolution && solutionUci.length >= 4
-        ? [solutionUci.slice(0, 2), solutionUci.slice(2, 4)].filter(
-            (square) => square.length === 2,
+  const markupLayer = (() => {
+    if (showingMate) {
+      return withWrongMoveArrow(emptyBoardMarkup(), solutionUci);
+    }
+    if (clickClean) return emptyBoardMarkup();
+    if (inWrongPanel && wrongMode === "all") {
+      const base = previewingWrong
+        ? recolorGreenDefense(boardReply?.markup ?? emptyBoardMarkup())
+        : emptyBoardMarkup();
+      return withWrongMoveArrows(base, wrongUcis);
+    }
+    if (boardReply) {
+      return previewingWrong
+        ? withWrongMoveArrow(
+            recolorGreenDefense(boardReply.markup ?? emptyBoardMarkup()),
+            boardReply.answer,
           )
-        : [];
+        : emptyBoardMarkup();
+    }
+    if (inWrongPanel) return emptyBoardMarkup();
+    return markupPhase === "after" ? form.markup.after : form.markup.before;
+  })();
   const chapterPlace = placementOf(
     curriculum,
     selectedChapterId ?? form.chapterId,
@@ -774,13 +783,26 @@ export function AdminPuzzleForm() {
                     }
                     markup={markupLayer}
                     topArrowUci={
-                      previewingWrong && boardReply?.answer
-                        ? boardReply.answer
-                        : boardReply
+                      showingMate
+                        ? solutionUci
+                        : clickClean
                           ? ""
-                          : solutionUci
+                          : inWrongPanel
+                            ? wrongMode !== "all" &&
+                              previewingWrong &&
+                              boardReply?.answer
+                              ? boardReply.answer
+                              : ""
+                            : solutionUci
                     }
-                    lastMoveSquares={wrongMoveSquares}
+                    lastMoveSquares={
+                      showingMate && solutionUci.length >= 4
+                        ? [
+                            solutionUci.slice(0, 2),
+                            solutionUci.slice(2, 4),
+                          ].filter((square) => square.length === 2)
+                        : []
+                    }
                     onMarkupChange={
                       (inWrong && !selectedReply?.answer) || hoverOther
                         ? undefined
@@ -969,9 +991,10 @@ export function AdminPuzzleForm() {
                     </div>
                   </details>
                   <div className="shrink-0 border-t border-border pt-1">
+                    <div className="flex items-center gap-1">
                     <button
                       type="button"
-                      className="w-full cursor-pointer select-none px-1 py-1 text-left text-sm text-muted-foreground hover:text-foreground"
+                      className="min-w-0 flex-1 cursor-pointer select-none px-1 py-1 text-left text-sm text-muted-foreground hover:text-foreground"
                       onClick={() => {
                         if (wrongOpen) {
                           setWrongOpen(false);
@@ -980,7 +1003,9 @@ export function AdminPuzzleForm() {
                           return;
                         }
                         setWrongOpen(true);
-                        if (form.wrongReplies.length === 0) return;
+                        if (wrongMode !== "first" || form.wrongReplies.length === 0) {
+                          return;
+                        }
                         setWrongEdit((current) =>
                           current === null ? 0 : current,
                         );
@@ -994,6 +1019,56 @@ export function AdminPuzzleForm() {
                         ? ` (${form.wrongReplies.length})`
                         : ""}
                     </button>
+                    {(
+                      [
+                        [
+                          "click",
+                          "1",
+                          "Výchozí pozice. Špatný tah až po kliknutí. ← → před matem / mat.",
+                        ],
+                        [
+                          "first",
+                          "2",
+                          "První špatný tah hned na šachovnici.",
+                        ],
+                        [
+                          "all",
+                          "3",
+                          "Všechny špatné tahy zelenými šipkami.",
+                        ],
+                      ] as const
+                    ).map(([id, label, title]) => (
+                      <Button
+                        key={id}
+                        type="button"
+                        size="sm"
+                        title={title}
+                        variant={wrongMode === id ? "default" : "ghost"}
+                        className="h-7 w-7 shrink-0 px-0"
+                        onClick={() => {
+                          setWrongMode(id);
+                          writeAdminWrongMode(id);
+                          if (id === "click") {
+                            setWrongEdit(null);
+                            setWrongHover(null);
+                            return;
+                          }
+                          if (id === "all") {
+                            setWrongOpen(true);
+                            return;
+                          }
+                          if (id === "first" && form.wrongReplies.length > 0) {
+                            setWrongOpen(true);
+                            setWrongEdit((current) =>
+                              current === null ? 0 : current,
+                            );
+                          }
+                        }}
+                      >
+                        {label}
+                      </Button>
+                    ))}
+                    </div>
                     {wrongOpen ? (
                     <div className="px-0.5 pb-2">
                   <div className="space-y-1">
@@ -1012,8 +1087,12 @@ export function AdminPuzzleForm() {
                         variant="outline"
                         className="h-10 px-4 text-sm"
                         onClick={() => {
-                          setWrongEdit(null);
                           setWrongHover(null);
+                          if (wrongMode === "first" && form.wrongReplies.length > 0) {
+                            setWrongEdit(0);
+                            return;
+                          }
+                          setWrongEdit(null);
                         }}
                       >
                         Hotovo
@@ -1022,41 +1101,21 @@ export function AdminPuzzleForm() {
                     </div>
                     {wrongOpen ? (
                       <p className="text-xs text-muted-foreground">
-                        ← → řešení a špatné tahy. D F jen špatné. ↑ ↓ úlohy.
+                        {wrongMode === "click"
+                          ? "← → před matem / mat. D F špatné. ↑ ↓ úlohy."
+                          : "← → špatné tahy. D F totéž. ↑ ↓ úlohy."}
                       </p>
-                    ) : null}
-                    {form.kind === "move" && solutionUci ? (
-                      <div
-                        data-wrong-tah="sol"
-                        tabIndex={-1}
-                        onMouseEnter={() => setWrongHover("sol")}
-                        onMouseLeave={() =>
-                          setWrongHover((current) =>
-                            current === "sol" ? null : current,
-                          )
-                        }
-                        onClick={() => {
-                          setWrongEdit(null);
-                          setWrongHover("sol");
-                          setMarkupTool((tool) =>
-                            tool === "piece" ? "arrow" : tool,
-                          );
-                        }}
-                        className={`flex cursor-pointer items-center gap-1 outline-none ${wrongEdit === null && (wrongHover === "sol" || wrongHover === null) ? "rounded bg-foreground/5 ring-1 ring-foreground/20" : wrongHover === "sol" ? "rounded bg-foreground/5" : ""}`}
-                      >
-                        <span className="h-8 w-[4.5rem] shrink-0 content-center px-1 text-center font-mono text-xs text-emerald-600">
-                          {solutionUci}
-                        </span>
-                        <span className="text-xs text-muted-foreground">
-                          Řešení{solutionSan ? ` · ${solutionSan}` : ""}
-                        </span>
-                      </div>
                     ) : null}
                     {form.wrongReplies.map((reply, index) => (
                       <div
                         key={index}
                         tabIndex={-1}
                         data-wrong-tah={index}
+                        onClick={() => {
+                          setWrongOpen(true);
+                          setWrongEdit(index);
+                          if (markupTool === "piece") setMarkupTool("arrow");
+                        }}
                         onMouseEnter={() => setWrongHover(index)}
                         onMouseLeave={() =>
                           setWrongHover((current) =>
@@ -1073,12 +1132,13 @@ export function AdminPuzzleForm() {
                           title={
                             wrongEdit === index && reply.answer
                               ? "Znovu zahrát"
-                              : reply.answer && isValidFen(startFen)
-                                ? uciToSan(startFen, reply.answer)
+                              : reply.answer
+                                ? reply.answer
                                 : "Zahrát špatný tah"
                           }
                           disabled={!isValidFen(form.fen)}
-                          onClick={() => {
+                          onClick={(event) => {
+                            event.stopPropagation();
                             if (wrongEdit === index) {
                               setForm((current) => {
                                 const next = [...current.wrongReplies];
@@ -1094,7 +1154,9 @@ export function AdminPuzzleForm() {
                             if (markupTool === "piece") setMarkupTool("arrow");
                           }}
                         >
-                          {reply.answer}
+                          {reply.answer && isValidFen(startFen)
+                            ? uciToCzechSan(startFen, reply.answer)
+                            : ""}
                         </Button>
                         {reply.markup && !isEmptyBoardMarkup(reply.markup) ? (
                           <span
@@ -1128,7 +1190,8 @@ export function AdminPuzzleForm() {
                         <button
                           type="button"
                           className="shrink-0 px-1 text-muted-foreground hover:text-foreground"
-                          onClick={() => {
+                          onClick={(event) => {
+                            event.stopPropagation();
                             setForm({
                               ...form,
                               wrongReplies: form.wrongReplies.filter(
@@ -1136,9 +1199,7 @@ export function AdminPuzzleForm() {
                               ),
                             });
                             setWrongHover((current) => {
-                              if (current === null || current === "sol") {
-                                return current;
-                              }
+                              if (current === null) return current;
                               if (current === index) return null;
                               return current > index ? current - 1 : current;
                             });
@@ -1307,6 +1368,13 @@ function withWrongMoveArrow(layer: BoardMarkup, uci: string): BoardMarkup {
   );
   if (!exists) next.arrows = [...next.arrows, move];
   return next;
+}
+
+function withWrongMoveArrows(layer: BoardMarkup, ucis: string[]): BoardMarkup {
+  return ucis.reduce(
+    (next, uci) => withWrongMoveArrow(next, uci),
+    cloneBoardMarkup(layer),
+  );
 }
 
 function stripMoveArrow(layer: BoardMarkup, uci: string): BoardMarkup {
