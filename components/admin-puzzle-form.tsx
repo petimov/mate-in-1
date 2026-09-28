@@ -919,6 +919,153 @@ export function AdminPuzzleForm() {
               )}
                   </div>
                   <div className="mt-2 flex min-h-0 flex-1 flex-col overflow-y-auto text-base">
+                  <details className="shrink-0 border-t border-border pt-1">
+                    <summary className="cursor-pointer select-none px-1 py-1 text-muted-foreground hover:text-foreground">
+                      Značky
+                    </summary>
+                    <div className="px-0.5 pb-2">
+                <MarkupPalette
+                  markup={form.markup}
+                  layer={markupLayer}
+                  phase={markupPhase}
+                  tool={markupTool}
+                    brush={inWrong && markupBrush === "green" ? "red" : markupBrush}
+                  kind={form.kind}
+                  canAfter={Boolean(afterFen)}
+                  hidePhase={wrongEdit !== null}
+                  onPhase={setMarkupPhase}
+                  onTool={setMarkupTool}
+                  onBrush={(brush) =>
+                    setMarkupBrush(
+                      wrongEdit !== null && brush === "green" ? "red" : brush,
+                    )
+                  }
+                  onChange={(markup) => {
+                    if (wrongEdit !== null) {
+                      if (!selectedReply?.answer || hoverOther) return;
+                      const layer = cloneBoardMarkup(markup[markupPhase]);
+                      setForm((current) => {
+                        const next = [...current.wrongReplies];
+                        const row = next[wrongEdit];
+                        if (!row) return current;
+                        next[wrongEdit] = {
+                          ...row,
+                          markup: recolorGreenDefense(
+                            stripMoveArrow(layer, row.answer),
+                          ),
+                        };
+                        return { ...current, wrongReplies: next };
+                      });
+                      return;
+                    }
+                    setForm((current) => ({ ...current, markup }));
+                  }}
+                />
+                    </div>
+                  </details>
+                  <details className="shrink-0 border-t border-border pt-1">
+                    <summary className="cursor-pointer select-none px-1 py-1 text-muted-foreground hover:text-foreground">
+                      Vysvětlení
+                    </summary>
+                    <div className="flex flex-col gap-1.5 px-0.5 pb-2">
+                  <Textarea
+                    id="explanation"
+                    rows={5}
+                    className="min-h-[6rem] resize-y px-2 py-1.5"
+                    placeholder="Po správném tahu…"
+                    value={form.explanation}
+                    onChange={(e) =>
+                      setForm({ ...form, explanation: e.target.value })
+                    }
+                  />
+                    </div>
+                  </details>
+                  <details className="shrink-0 border-t border-border pt-1">
+                    <summary className="cursor-pointer select-none px-1 py-1 text-muted-foreground hover:text-foreground">
+                      Údaje
+                    </summary>
+                    <div className="grid grid-cols-2 gap-2 px-0.5 pb-2">
+                  <select
+                    id="chapter"
+                    className="col-span-2 h-9 w-full rounded-md border border-border bg-background px-2"
+                    value={form.chapterId ?? ""}
+                    onChange={(event) => {
+                      const chapterId = event.target.value || null;
+                      setForm({ ...form, chapterId });
+                      setSelectedChapterId(chapterId);
+                      if (form.id) {
+                        void onMovePuzzle(form.id, chapterId);
+                      }
+                    }}
+                  >
+                    <option value="">Nezařazené</option>
+                    {chapterOptions(curriculum, courseId).map((item) => (
+                      <option key={item.id} value={item.id}>
+                        {item.label}
+                      </option>
+                    ))}
+                  </select>
+                  <Input
+                    id="theme"
+                    className="h-9 px-2"
+                    placeholder="Téma"
+                    value={form.theme}
+                    onChange={(e) => setForm({ ...form, theme: e.target.value })}
+                  />
+                  <Input
+                    id="level"
+                    className="h-9 px-2"
+                    placeholder="Úroveň"
+                    value={form.level}
+                    onChange={(e) => setForm({ ...form, level: e.target.value })}
+                  />
+                  <Input
+                    id="source"
+                    className="h-9 px-2"
+                    placeholder="Partie"
+                    value={form.source}
+                    onChange={(e) => setForm({ ...form, source: e.target.value })}
+                  />
+                <Input
+                  id="hint"
+                  className="col-span-2 h-9 px-2"
+                  placeholder="Zadání"
+                  value={form.hint}
+                  onChange={(e) => setForm({ ...form, hint: e.target.value })}
+                />
+                    </div>
+                  </details>
+                  <details className="shrink-0 border-t border-border pt-1">
+                    <summary className="cursor-pointer select-none px-1 py-1 text-muted-foreground hover:text-foreground">
+                      Z/X
+                    </summary>
+                    <div className="flex flex-wrap gap-1 px-0.5 pb-2">
+                      <Button
+                        type="button"
+                        size="sm"
+                        className="h-9 text-base"
+                        variant={stepReset === "keep" ? "default" : "ghost"}
+                        onClick={() => {
+                          setStepReset("keep");
+                          writeAdminStepReset("keep");
+                        }}
+                      >
+                        Nechat Před/Po
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        className="h-9 text-base"
+                        variant={stepReset === "before" ? "default" : "ghost"}
+                        onClick={() => {
+                          setStepReset("before");
+                          writeAdminStepReset("before");
+                        }}
+                      >
+                        Vždy před tahem
+                      </Button>
+                    </div>
+                  </details>
                   <div className="shrink-0 border-t border-border pt-1">
                     <div className="flex shrink-0 items-center gap-1">
                     <button
@@ -1137,153 +1284,6 @@ export function AdminPuzzleForm() {
                     </div>
                     ) : null}
                   </div>
-                  <details className="shrink-0 border-t border-border pt-1">
-                    <summary className="cursor-pointer select-none px-1 py-1 text-muted-foreground hover:text-foreground">
-                      Značky
-                    </summary>
-                    <div className="px-0.5 pb-2">
-                <MarkupPalette
-                  markup={form.markup}
-                  layer={markupLayer}
-                  phase={markupPhase}
-                  tool={markupTool}
-                    brush={inWrong && markupBrush === "green" ? "red" : markupBrush}
-                  kind={form.kind}
-                  canAfter={Boolean(afterFen)}
-                  hidePhase={wrongEdit !== null}
-                  onPhase={setMarkupPhase}
-                  onTool={setMarkupTool}
-                  onBrush={(brush) =>
-                    setMarkupBrush(
-                      wrongEdit !== null && brush === "green" ? "red" : brush,
-                    )
-                  }
-                  onChange={(markup) => {
-                    if (wrongEdit !== null) {
-                      if (!selectedReply?.answer || hoverOther) return;
-                      const layer = cloneBoardMarkup(markup[markupPhase]);
-                      setForm((current) => {
-                        const next = [...current.wrongReplies];
-                        const row = next[wrongEdit];
-                        if (!row) return current;
-                        next[wrongEdit] = {
-                          ...row,
-                          markup: recolorGreenDefense(
-                            stripMoveArrow(layer, row.answer),
-                          ),
-                        };
-                        return { ...current, wrongReplies: next };
-                      });
-                      return;
-                    }
-                    setForm((current) => ({ ...current, markup }));
-                  }}
-                />
-                    </div>
-                  </details>
-                  <details className="shrink-0 border-t border-border pt-1">
-                    <summary className="cursor-pointer select-none px-1 py-1 text-muted-foreground hover:text-foreground">
-                      Vysvětlení
-                    </summary>
-                    <div className="flex flex-col gap-1.5 px-0.5 pb-2">
-                  <Textarea
-                    id="explanation"
-                    rows={5}
-                    className="min-h-[6rem] resize-y px-2 py-1.5"
-                    placeholder="Po správném tahu…"
-                    value={form.explanation}
-                    onChange={(e) =>
-                      setForm({ ...form, explanation: e.target.value })
-                    }
-                  />
-                    </div>
-                  </details>
-                  <details className="shrink-0 border-t border-border pt-1">
-                    <summary className="cursor-pointer select-none px-1 py-1 text-muted-foreground hover:text-foreground">
-                      Údaje
-                    </summary>
-                    <div className="grid grid-cols-2 gap-2 px-0.5 pb-2">
-                  <select
-                    id="chapter"
-                    className="col-span-2 h-9 w-full rounded-md border border-border bg-background px-2"
-                    value={form.chapterId ?? ""}
-                    onChange={(event) => {
-                      const chapterId = event.target.value || null;
-                      setForm({ ...form, chapterId });
-                      setSelectedChapterId(chapterId);
-                      if (form.id) {
-                        void onMovePuzzle(form.id, chapterId);
-                      }
-                    }}
-                  >
-                    <option value="">Nezařazené</option>
-                    {chapterOptions(curriculum, courseId).map((item) => (
-                      <option key={item.id} value={item.id}>
-                        {item.label}
-                      </option>
-                    ))}
-                  </select>
-                  <Input
-                    id="theme"
-                    className="h-9 px-2"
-                    placeholder="Téma"
-                    value={form.theme}
-                    onChange={(e) => setForm({ ...form, theme: e.target.value })}
-                  />
-                  <Input
-                    id="level"
-                    className="h-9 px-2"
-                    placeholder="Úroveň"
-                    value={form.level}
-                    onChange={(e) => setForm({ ...form, level: e.target.value })}
-                  />
-                  <Input
-                    id="source"
-                    className="h-9 px-2"
-                    placeholder="Partie"
-                    value={form.source}
-                    onChange={(e) => setForm({ ...form, source: e.target.value })}
-                  />
-                <Input
-                  id="hint"
-                  className="col-span-2 h-9 px-2"
-                  placeholder="Zadání"
-                  value={form.hint}
-                  onChange={(e) => setForm({ ...form, hint: e.target.value })}
-                />
-                    </div>
-                  </details>
-                  <details className="shrink-0 border-t border-border pt-1">
-                    <summary className="cursor-pointer select-none px-1 py-1 text-muted-foreground hover:text-foreground">
-                      Z/X
-                    </summary>
-                    <div className="flex flex-wrap gap-1 px-0.5 pb-2">
-                      <Button
-                        type="button"
-                        size="sm"
-                        className="h-9 text-base"
-                        variant={stepReset === "keep" ? "default" : "ghost"}
-                        onClick={() => {
-                          setStepReset("keep");
-                          writeAdminStepReset("keep");
-                        }}
-                      >
-                        Nechat Před/Po
-                      </Button>
-                      <Button
-                        type="button"
-                        size="sm"
-                        className="h-9 text-base"
-                        variant={stepReset === "before" ? "default" : "ghost"}
-                        onClick={() => {
-                          setStepReset("before");
-                          writeAdminStepReset("before");
-                        }}
-                      >
-                        Vždy před tahem
-                      </Button>
-                    </div>
-                  </details>
                   </div>
               </div>
             </form>
