@@ -77,6 +77,7 @@ type PositionSetupBoardProps = {
   moveLocked?: boolean;
   onPlayMove?: (uci: string) => void;
   topArrowUci?: string;
+  lastMoveSquares?: string[];
 };
 
 export function PositionSetupBoard({
@@ -95,6 +96,7 @@ export function PositionSetupBoard({
   moveLocked = false,
   onPlayMove,
   topArrowUci,
+  lastMoveSquares = [],
 }: PositionSetupBoardProps) {
   const { board, pieces } = useBoardAppearance();
   const rootRef = useRef<HTMLDivElement>(null);
@@ -176,6 +178,9 @@ export function PositionSetupBoard({
     const extra: Record<string, CSSProperties> = {
       ...markupFillStyles(layer),
     };
+    for (const square of lastMoveSquares) {
+      extra[square] = { backgroundColor: "rgba(155, 199, 0, 0.41)" };
+    }
     for (const square of selectedSquares) extra[square] = MARKED;
     if (arrowFrom) {
       extra[arrowFrom] = { backgroundColor: "rgba(20, 85, 30, 0.35)" };
@@ -184,7 +189,7 @@ export function PositionSetupBoard({
       extra[selected] = { backgroundColor: "rgba(20, 85, 30, 0.5)" };
     }
     return mergeSquareStyles(board, extra);
-  }, [arrowFrom, board, layer, selected, selectedSquares]);
+  }, [arrowFrom, board, lastMoveSquares, layer, selected, selectedSquares]);
 
   const addArrow = useCallback(
     (from: string, to: string) => {

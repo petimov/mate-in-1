@@ -86,7 +86,7 @@ export function MarkupPalette({
         >
           Smazat
         </button>
-        {phase === "after" ? (
+        {phase === "after" && !hidePhase ? (
           <button
             type="button"
             className="rounded bg-muted px-2 py-1 text-xs text-muted-foreground"

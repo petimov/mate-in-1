@@ -91,6 +91,8 @@ export function AdminPuzzleForm() {
   const [saving, setSaving] = useState(false);
   const [playTarget, setPlayTarget] = useState<"solution" | null>(null);
   const [wrongEdit, setWrongEdit] = useState<number | null>(null);
+  const [wrongOpen, setWrongOpen] = useState(false);
+  const [wrongHover, setWrongHover] = useState<number | "sol" | null>(null);
   const [boardOpen, setBoardOpen] = useState(false);
   const [markupTool, setMarkupTool] = useState<SetupTool>("arrow");
   const [markupBrush, setMarkupBrush] = useState<Brush>("green");
@@ -418,14 +420,39 @@ export function AdminPuzzleForm() {
       const count = form.wrongReplies.length;
       const up = event.code === "KeyD" || event.key === "d" || event.key === "D";
       const down = event.code === "KeyF" || event.key === "f" || event.key === "F";
+      const inWrongList = wrongOpen || wrongEdit !== null;
       if (count > 0 && (up || down)) {
         event.preventDefault();
         event.stopImmediatePropagation();
         const dir: -1 | 1 = up ? -1 : 1;
+        setWrongOpen(true);
+        setWrongHover(null);
         setWrongEdit((current) => {
           if (current === null) return dir < 0 ? count - 1 : 0;
           return (current + dir + count) % count;
         });
+        setMarkupTool((tool) => (tool === "piece" ? "arrow" : tool));
+        return;
+      }
+      if (
+        inWrongList &&
+        count > 0 &&
+        (event.key === "ArrowLeft" || event.key === "ArrowRight")
+      ) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        const dir = event.key === "ArrowLeft" ? -1 : 1;
+        const total = count + 1;
+        const pos = wrongEdit === null ? 0 : wrongEdit + 1;
+        const next = (pos + dir + total) % total;
+        setWrongOpen(true);
+        if (next === 0) {
+          setWrongEdit(null);
+          setWrongHover("sol");
+        } else {
+          setWrongEdit(next - 1);
+          setWrongHover(null);
+        }
         setMarkupTool((tool) => (tool === "piece" ? "arrow" : tool));
         return;
       }
@@ -440,7 +467,22 @@ export function AdminPuzzleForm() {
     }
     window.addEventListener("keydown", onKey, true);
     return () => window.removeEventListener("keydown", onKey, true);
-  }, [form.wrongReplies.length, playTarget]);
+  }, [form.wrongReplies.length, playTarget, wrongEdit, wrongOpen]);
+
+  useEffect(() => {
+    const id =
+      wrongEdit !== null
+        ? String(wrongEdit)
+        : wrongHover === "sol"
+          ? "sol"
+          : null;
+    if (id === null) return;
+    const active = document.activeElement as HTMLElement | null;
+    if (active?.closest("input, textarea, select")) return;
+    document
+      .querySelector<HTMLElement>(`[data-wrong-tah="${id}"]`)
+      ?.focus();
+  }, [wrongEdit, wrongHover]);
 
   function loadPuzzle(puzzle: Puzzle) {
     setForm({
@@ -467,7 +509,10 @@ export function AdminPuzzleForm() {
       sort: puzzle.sort ?? 0,
     });
     setSelectedChapterId(puzzle.chapterId ?? null);
-    setWrongEdit(null);
+    const hasWrong = Boolean(puzzle.wrongReplies?.length);
+    setWrongOpen(hasWrong);
+    setWrongEdit(hasWrong ? 0 : null);
+    setWrongHover(null);
     setStatus(null);
     if (stepReset === "before") setMarkupPhase("before");
   }
@@ -487,6 +532,7 @@ export function AdminPuzzleForm() {
       ...form,
       wrongReplies: [...form.wrongReplies, { answer: "", text }],
     });
+    setWrongOpen(true);
     setWrongEdit(index);
     if (markupTool === "piece") setMarkupTool("arrow");
   }
@@ -511,7 +557,11 @@ export function AdminPuzzleForm() {
       source: form.source.trim() || undefined,
       explanation: form.explanation.trim() || undefined,
       videoUrl: form.videoUrl.trim() || undefined,
-      wrongReplies: form.wrongReplies,
+      wrongReplies: form.wrongReplies.map((reply) =>
+        reply.markup
+          ? { ...reply, markup: stripMoveArrow(reply.markup, reply.answer) }
+          : reply,
+      ),
       markup: form.markup,
       chapterId: form.chapterId,
       sort:
@@ -557,19 +607,58 @@ export function AdminPuzzleForm() {
       ? fenAfterUci(form.fen, solutionUci)
       : null;
   const startFen = startFenForLine(form.fen, form.move ? [form.move] : []);
-  const editingReply =
-    wrongEdit !== null ? form.wrongReplies[wrongEdit] : undefined;
-  const previewingWrong = Boolean(editingReply?.answer);
-  const boardFen = editingReply
-    ? startFen
-    : markupPhase === "after" && afterFen
+  const inWrong = wrongEdit !== null;
+  const selectedReply = inWrong ? form.wrongReplies[wrongEdit] : undefined;
+  const boardIndex =
+    wrongHover === "sol"
+      ? null
+      : typeof wrongHover === "number"
+        ? wrongHover
+        : wrongEdit;
+  const boardReply =
+    boardIndex !== null ? form.wrongReplies[boardIndex] : undefined;
+  const previewingWrong = Boolean(boardReply?.answer);
+  const viewingSolution = !boardReply && (wrongOpen || wrongHover === "sol");
+  const hoverOther = wrongHover !== null && wrongHover !== wrongEdit;
+  const wrongAfterFen =
+    previewingWrong && boardReply?.answer
+      ? fenAfterUci(startFen, boardReply.answer)
+      : null;
+  const boardFen = boardReply
+    ? (wrongAfterFen ?? startFen)
+    : viewingSolution && afterFen
       ? afterFen
-      : form.fen;
-  const markupLayer = editingReply
-    ? previewWrongMarkup(editingReply)
-    : markupPhase === "after"
-      ? form.markup.after
-      : form.markup.before;
+      : markupPhase === "after" && afterFen
+        ? afterFen
+        : form.fen;
+  const markupLayer = boardReply
+    ? previewingWrong
+      ? withWrongMoveArrow(
+          cloneBoardMarkup(boardReply.markup ?? emptyBoardMarkup()),
+          boardReply.answer,
+        )
+      : emptyBoardMarkup()
+    : viewingSolution && solutionUci
+      ? withWrongMoveArrow(
+          cloneBoardMarkup(
+            markupPhase === "after" ? form.markup.after : form.markup.before,
+          ),
+          solutionUci,
+        )
+      : markupPhase === "after"
+        ? form.markup.after
+        : form.markup.before;
+  const wrongMoveSquares =
+    previewingWrong && boardReply?.answer
+      ? [
+          normalizeUci(boardReply.answer).slice(0, 2),
+          normalizeUci(boardReply.answer).slice(2, 4),
+        ].filter((square) => square.length === 2)
+      : viewingSolution && solutionUci.length >= 4
+        ? [solutionUci.slice(0, 2), solutionUci.slice(2, 4)].filter(
+            (square) => square.length === 2,
+          )
+        : [];
   const chapterPlace = placementOf(
     curriculum,
     selectedChapterId ?? form.chapterId,
@@ -623,6 +712,8 @@ export function AdminPuzzleForm() {
                 setSelectedChapterId(chapterId);
                 setForm({ ...emptyForm(), chapterId });
                 setWrongEdit(null);
+                setWrongOpen(false);
+                setWrongHover(null);
                 setStatus(null);
               }}
               onDeletePuzzles={(ids) => void onDeletePuzzles(ids)}
@@ -644,7 +735,9 @@ export function AdminPuzzleForm() {
                     boardId="admin-preview-setup"
                     className="min-h-0 flex-1"
                     fen={boardFen}
-                    playMode={wrongEdit !== null && !previewingWrong}
+                    playMode={
+                      inWrong && !selectedReply?.answer && !hoverOther
+                    }
                     moveLocked={false}
                     onPlayMove={(uci) => {
                       if (wrongEdit === null) return;
@@ -672,30 +765,36 @@ export function AdminPuzzleForm() {
                     }
                     markup={markupLayer}
                     topArrowUci={
-                      previewingWrong
-                        ? (editingReply?.answer ?? "")
-                        : solutionUci
+                      previewingWrong && boardReply?.answer
+                        ? boardReply.answer
+                        : boardReply
+                          ? ""
+                          : solutionUci
                     }
-                    onMarkupChange={(layer) =>
-                      setForm((current) => {
-                        if (wrongEdit !== null) {
-                          const next = [...current.wrongReplies];
-                          const row = next[wrongEdit];
-                          if (!row) return current;
-                          next[wrongEdit] = {
-                            ...row,
-                            markup: stripMoveArrow(layer, row.answer),
-                          };
-                          return { ...current, wrongReplies: next };
-                        }
-                        return {
-                          ...current,
-                          markup: {
-                            ...current.markup,
-                            [markupPhase]: layer,
-                          },
-                        };
-                      })
+                    lastMoveSquares={wrongMoveSquares}
+                    onMarkupChange={
+                      (inWrong && !selectedReply?.answer) || hoverOther
+                        ? undefined
+                        : (layer) =>
+                            setForm((current) => {
+                              if (wrongEdit !== null) {
+                                const next = [...current.wrongReplies];
+                                const row = next[wrongEdit];
+                                if (!row) return current;
+                                next[wrongEdit] = {
+                                  ...row,
+                                  markup: stripMoveArrow(layer, row.answer),
+                                };
+                                return { ...current, wrongReplies: next };
+                              }
+                              return {
+                                ...current,
+                                markup: {
+                                  ...current.markup,
+                                  [markupPhase]: layer,
+                                },
+                              };
+                            })
                     }
                     tool={markupTool}
                     brush={markupBrush}
@@ -816,15 +915,16 @@ export function AdminPuzzleForm() {
                   onBrush={setMarkupBrush}
                   onChange={(markup) => {
                     if (wrongEdit !== null) {
+                      if (!selectedReply?.answer || hoverOther) return;
                       const layer = cloneBoardMarkup(markup[markupPhase]);
                       setForm((current) => {
                         const next = [...current.wrongReplies];
                         const row = next[wrongEdit];
                         if (!row) return current;
                         next[wrongEdit] = {
-                        ...row,
-                        markup: stripMoveArrow(layer, row.answer),
-                      };
+                          ...row,
+                          markup: stripMoveArrow(layer, row.answer),
+                        };
                         return { ...current, wrongReplies: next };
                       });
                       return;
@@ -853,7 +953,19 @@ export function AdminPuzzleForm() {
                   </details>
                   <details
                     className="shrink-0 border-t border-border pt-1"
-                    open={wrongEdit !== null ? true : undefined}
+                    open={wrongOpen}
+                    onToggle={(event) => {
+                      const opened = event.currentTarget.open;
+                      setWrongOpen(opened);
+                      if (!opened) {
+                        setWrongEdit(null);
+                        setWrongHover(null);
+                        return;
+                      }
+                      if (form.wrongReplies.length === 0) return;
+                      setWrongEdit((current) => (current === null ? 0 : current));
+                      setMarkupTool((tool) => (tool === "piece" ? "arrow" : tool));
+                    }}
                   >
                     <summary className="cursor-pointer select-none px-1 py-1 text-sm text-muted-foreground hover:text-foreground">
                       Špatné tahy
@@ -877,21 +989,59 @@ export function AdminPuzzleForm() {
                         type="button"
                         variant="outline"
                         className="h-10 px-4 text-sm"
-                        onClick={() => setWrongEdit(null)}
+                        onClick={() => {
+                          setWrongEdit(null);
+                          setWrongHover(null);
+                        }}
                       >
                         Hotovo
                       </Button>
                     ) : null}
                     </div>
-                    {wrongEdit !== null ? (
+                    {wrongOpen ? (
                       <p className="text-xs text-muted-foreground">
-                        D nahoru, F dolů. Zelená = špatný tah, ostatní = obrana.
+                        ← → řešení a špatné tahy. D F jen špatné. ↑ ↓ úlohy.
                       </p>
+                    ) : null}
+                    {form.kind === "move" && solutionUci ? (
+                      <div
+                        data-wrong-tah="sol"
+                        tabIndex={-1}
+                        onMouseEnter={() => setWrongHover("sol")}
+                        onMouseLeave={() =>
+                          setWrongHover((current) =>
+                            current === "sol" ? null : current,
+                          )
+                        }
+                        onClick={() => {
+                          setWrongEdit(null);
+                          setWrongHover("sol");
+                          setMarkupTool((tool) =>
+                            tool === "piece" ? "arrow" : tool,
+                          );
+                        }}
+                        className={`flex cursor-pointer items-center gap-1 outline-none ${wrongEdit === null && (wrongHover === "sol" || wrongHover === null) ? "rounded bg-foreground/5 ring-1 ring-foreground/20" : wrongHover === "sol" ? "rounded bg-foreground/5" : ""}`}
+                      >
+                        <span className="h-8 w-[4.5rem] shrink-0 content-center px-1 text-center font-mono text-xs text-emerald-600">
+                          {solutionUci}
+                        </span>
+                        <span className="text-xs text-muted-foreground">
+                          Řešení{solutionSan ? ` · ${solutionSan}` : ""}
+                        </span>
+                      </div>
                     ) : null}
                     {form.wrongReplies.map((reply, index) => (
                       <div
                         key={index}
-                        className={`flex items-center gap-1 ${wrongEdit === index ? "rounded bg-foreground/5" : ""}`}
+                        tabIndex={-1}
+                        data-wrong-tah={index}
+                        onMouseEnter={() => setWrongHover(index)}
+                        onMouseLeave={() =>
+                          setWrongHover((current) =>
+                            current === index ? null : current,
+                          )
+                        }
+                        className={`flex cursor-pointer items-center gap-1 outline-none ${wrongEdit === index ? "rounded bg-foreground/5 ring-1 ring-foreground/20" : wrongHover === index ? "rounded bg-foreground/5" : ""}`}
                       >
                         <Button
                           type="button"
@@ -917,6 +1067,7 @@ export function AdminPuzzleForm() {
                               });
                               return;
                             }
+                            setWrongOpen(true);
                             setWrongEdit(index);
                             if (markupTool === "piece") setMarkupTool("arrow");
                           }}
@@ -934,7 +1085,7 @@ export function AdminPuzzleForm() {
                         <Input
                           className="h-8 w-12 shrink-0 px-1 text-center text-sm uppercase"
                           maxLength={3}
-                          placeholder="kód"
+                          placeholder=""
                           title={
                             resolveWrongReplyText(reply.text) ||
                             (reply.text ? "není v tabulce" : "kód, max 3 písmena")
@@ -959,6 +1110,13 @@ export function AdminPuzzleForm() {
                               wrongReplies: form.wrongReplies.filter(
                                 (_, itemIndex) => itemIndex !== index,
                               ),
+                            });
+                            setWrongHover((current) => {
+                              if (current === null || current === "sol") {
+                                return current;
+                              }
+                              if (current === index) return null;
+                              return current > index ? current - 1 : current;
                             });
                             setWrongEdit((current) => {
                               if (current === null) return null;
@@ -1112,17 +1270,18 @@ function uciMoveArrow(uci: string) {
   return { from: move.slice(0, 2), to: move.slice(2, 4), color: "green" as const };
 }
 
-function previewWrongMarkup(reply: WrongReply): BoardMarkup {
-  const layer = cloneBoardMarkup(reply.markup ?? emptyBoardMarkup());
-  const move = uciMoveArrow(reply.answer);
-  if (!move) return layer;
-  layer.arrows = [
-    ...layer.arrows.filter(
-      (arrow) => arrow.from !== move.from || arrow.to !== move.to,
-    ),
-    move,
-  ];
-  return layer;
+function withWrongMoveArrow(layer: BoardMarkup, uci: string): BoardMarkup {
+  const move = uciMoveArrow(uci);
+  const next = cloneBoardMarkup(layer);
+  if (!move) return next;
+  const exists = next.arrows.some(
+    (arrow) =>
+      arrow.from === move.from &&
+      arrow.to === move.to &&
+      arrow.color === "green",
+  );
+  if (!exists) next.arrows = [...next.arrows, move];
+  return next;
 }
 
 function stripMoveArrow(layer: BoardMarkup, uci: string): BoardMarkup {
@@ -1130,7 +1289,10 @@ function stripMoveArrow(layer: BoardMarkup, uci: string): BoardMarkup {
   const next = cloneBoardMarkup(layer);
   if (!move) return next;
   next.arrows = next.arrows.filter(
-    (arrow) => arrow.from !== move.from || arrow.to !== move.to,
+    (arrow) =>
+      arrow.from !== move.from ||
+      arrow.to !== move.to ||
+      arrow.color !== "green",
   );
   return next;
 }
