@@ -1203,16 +1203,6 @@ export function AdminPuzzleForm() {
                       Údaje
                     </summary>
                     <div className="grid grid-cols-2 gap-2 px-0.5 pb-2">
-                  <div className="col-span-2 grid gap-1">
-                    <p>
-                      <span className="text-muted-foreground">Kapitola: </span>
-                      {chapterPlace.chapter}
-                    </p>
-                    <p>
-                      <span className="text-muted-foreground">Podkapitola: </span>
-                      {chapterPlace.sub}
-                    </p>
-                  </div>
                   <select
                     id="chapter"
                     className="col-span-2 h-9 w-full rounded-md border border-border bg-background px-2"
@@ -1254,13 +1244,6 @@ export function AdminPuzzleForm() {
                     value={form.source}
                     onChange={(e) => setForm({ ...form, source: e.target.value })}
                   />
-                <Input
-                  id="videoUrl"
-                  className="h-9 px-2"
-                  placeholder="Video URL"
-                  value={form.videoUrl}
-                  onChange={(e) => setForm({ ...form, videoUrl: e.target.value })}
-                />
                 <Input
                   id="hint"
                   className="col-span-2 h-9 px-2"
