@@ -30,7 +30,7 @@ import {
   withMateSubchapters,
   type Curriculum,
 } from "@/lib/curriculum";
-import { isEmptyBoardMarkup, visibleMarkup } from "@/lib/markup";
+import { isEmptyBoardMarkup, recolorGreenDefense, visibleMarkup } from "@/lib/markup";
 import { puzzleKind } from "@/lib/puzzles";
 import type { Puzzle, PuzzleKind, WrongReply } from "@/lib/types";
 import { resolveWrongReplyText } from "@/lib/wrong-reply-codes";
@@ -266,7 +266,7 @@ export function PuzzleTrainer({
 
   const boardMarkup = useMemo(() => {
     if (wrongHit?.markup && !isEmptyBoardMarkup(wrongHit.markup)) {
-      return wrongHit.markup;
+      return recolorGreenDefense(wrongHit.markup);
     }
     return prefs.showMarkup ? visibleMarkup(puzzle?.markup, atEnd) : undefined;
   }, [atEnd, prefs.showMarkup, puzzle, wrongHit]);

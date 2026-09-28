@@ -172,6 +172,14 @@ export function cloneBoardMarkup(markup?: BoardMarkup | null): BoardMarkup {
   };
 }
 
+export function recolorGreenDefense(markup?: BoardMarkup | null): BoardMarkup {
+  const next = cloneBoardMarkup(markup);
+  next.arrows = next.arrows.map((arrow) =>
+    arrow.color === "green" ? { ...arrow, color: "red" } : arrow,
+  );
+  return next;
+}
+
 export function clonePuzzleMarkup(markup?: PuzzleMarkup | null): PuzzleMarkup {
   return {
     before: cloneBoardMarkup(markup?.before),

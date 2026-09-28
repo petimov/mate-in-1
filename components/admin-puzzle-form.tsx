@@ -52,6 +52,7 @@ import {
   emptyBoardMarkup,
   emptyPuzzleMarkup,
   isEmptyBoardMarkup,
+  recolorGreenDefense,
   type BoardMarkup,
   type Brush,
   type MarkupPhase,
@@ -484,6 +485,11 @@ export function AdminPuzzleForm() {
       ?.focus();
   }, [wrongEdit, wrongHover]);
 
+  useEffect(() => {
+    if (wrongEdit === null) return;
+    setMarkupBrush((brush) => (brush === "green" ? "red" : brush));
+  }, [wrongEdit]);
+
   function loadPuzzle(puzzle: Puzzle) {
     setForm({
       id: puzzle.id,
@@ -526,11 +532,10 @@ export function AdminPuzzleForm() {
   }
 
   function addWrongReply() {
-    const text = form.wrongReplies.at(-1)?.text ?? "";
     const index = form.wrongReplies.length;
     setForm({
       ...form,
-      wrongReplies: [...form.wrongReplies, { answer: "", text }],
+      wrongReplies: [...form.wrongReplies, { answer: "", text: "" }],
     });
     setWrongOpen(true);
     setWrongEdit(index);
@@ -559,7 +564,12 @@ export function AdminPuzzleForm() {
       videoUrl: form.videoUrl.trim() || undefined,
       wrongReplies: form.wrongReplies.map((reply) =>
         reply.markup
-          ? { ...reply, markup: stripMoveArrow(reply.markup, reply.answer) }
+          ? {
+              ...reply,
+              markup: recolorGreenDefense(
+                stripMoveArrow(reply.markup, reply.answer),
+              ),
+            }
           : reply,
       ),
       markup: form.markup,
@@ -634,7 +644,7 @@ export function AdminPuzzleForm() {
   const markupLayer = boardReply
     ? previewingWrong
       ? withWrongMoveArrow(
-          cloneBoardMarkup(boardReply.markup ?? emptyBoardMarkup()),
+          recolorGreenDefense(boardReply.markup ?? emptyBoardMarkup()),
           boardReply.answer,
         )
       : emptyBoardMarkup()
@@ -783,7 +793,9 @@ export function AdminPuzzleForm() {
                                 if (!row) return current;
                                 next[wrongEdit] = {
                                   ...row,
-                                  markup: stripMoveArrow(layer, row.answer),
+                                  markup: recolorGreenDefense(
+                                    stripMoveArrow(layer, row.answer),
+                                  ),
                                 };
                                 return { ...current, wrongReplies: next };
                               }
@@ -797,7 +809,7 @@ export function AdminPuzzleForm() {
                             })
                     }
                     tool={markupTool}
-                    brush={markupBrush}
+                    brush={inWrong && markupBrush === "green" ? "red" : markupBrush}
                     orientation={
                       form.chapterId
                         ? chapterSideOf(curriculum.chapters, form.chapterId)
@@ -906,13 +918,17 @@ export function AdminPuzzleForm() {
                   layer={markupLayer}
                   phase={markupPhase}
                   tool={markupTool}
-                  brush={markupBrush}
+                    brush={inWrong && markupBrush === "green" ? "red" : markupBrush}
                   kind={form.kind}
                   canAfter={Boolean(afterFen)}
                   hidePhase={wrongEdit !== null}
                   onPhase={setMarkupPhase}
                   onTool={setMarkupTool}
-                  onBrush={setMarkupBrush}
+                  onBrush={(brush) =>
+                    setMarkupBrush(
+                      wrongEdit !== null && brush === "green" ? "red" : brush,
+                    )
+                  }
                   onChange={(markup) => {
                     if (wrongEdit !== null) {
                       if (!selectedReply?.answer || hoverOther) return;
@@ -923,7 +939,9 @@ export function AdminPuzzleForm() {
                         if (!row) return current;
                         next[wrongEdit] = {
                           ...row,
-                          markup: stripMoveArrow(layer, row.answer),
+                          markup: recolorGreenDefense(
+                            stripMoveArrow(layer, row.answer),
+                          ),
                         };
                         return { ...current, wrongReplies: next };
                       });
@@ -1047,13 +1065,13 @@ export function AdminPuzzleForm() {
                           type="button"
                           variant="outline"
                           size="sm"
-                          className="h-8 w-[4.5rem] shrink-0 px-1 font-mono text-xs"
+                          className={`h-8 w-[4.5rem] shrink-0 px-1 font-mono text-xs ${reply.answer ? "" : "text-muted-foreground"}`}
                           title={
                             wrongEdit === index && reply.answer
                               ? "Znovu zahrát"
                               : reply.answer && isValidFen(startFen)
                                 ? uciToSan(startFen, reply.answer)
-                                : undefined
+                                : "Zahrát špatný tah"
                           }
                           disabled={!isValidFen(form.fen)}
                           onClick={() => {
@@ -1072,7 +1090,7 @@ export function AdminPuzzleForm() {
                             if (markupTool === "piece") setMarkupTool("arrow");
                           }}
                         >
-                          {reply.answer || "Tah"}
+                          {reply.answer}
                         </Button>
                         {reply.markup && !isEmptyBoardMarkup(reply.markup) ? (
                           <span
@@ -1086,6 +1104,8 @@ export function AdminPuzzleForm() {
                           className="h-8 w-12 shrink-0 px-1 text-center text-sm uppercase"
                           maxLength={3}
                           placeholder=""
+                          autoComplete="off"
+                          spellCheck={false}
                           title={
                             resolveWrongReplyText(reply.text) ||
                             (reply.text ? "není v tabulce" : "kód, max 3 písmena")
