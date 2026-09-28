@@ -76,7 +76,7 @@ export function MarkupPalette({
         </Chip>
         <button
           type="button"
-          className="rounded bg-muted px-2 py-1 text-xs text-muted-foreground"
+          className="rounded bg-muted px-2 py-1 text-base text-muted-foreground"
           onClick={() =>
             onChange({
               ...markup,
@@ -89,7 +89,7 @@ export function MarkupPalette({
         {phase === "after" && !hidePhase ? (
           <button
             type="button"
-            className="rounded bg-muted px-2 py-1 text-xs text-muted-foreground"
+            className="rounded bg-muted px-2 py-1 text-base text-muted-foreground"
             onClick={() =>
               onChange({
                 ...markup,
@@ -119,7 +119,7 @@ export function MarkupPalette({
               className="size-8 shrink-0 rounded-full border border-black/20 shadow-sm"
               style={{ backgroundColor: BRUSH_HEX[item.id] }}
             />
-            <span className="text-[11px] leading-none">{item.label}</span>
+            <span className="text-base leading-none">{item.label}</span>
           </button>
         ))}
       </div>
@@ -140,7 +140,7 @@ function Chip({
     <button
       type="button"
       className={cn(
-        "rounded px-2 py-1 text-xs",
+        "rounded px-2 py-1 text-base",
         active ? "bg-[#81b64c] text-zinc-950" : "bg-muted text-muted-foreground",
       )}
       onClick={onClick}
