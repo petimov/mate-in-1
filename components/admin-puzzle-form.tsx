@@ -54,7 +54,6 @@ import {
   clonePuzzleMarkup,
   emptyBoardMarkup,
   emptyPuzzleMarkup,
-  isEmptyBoardMarkup,
   recolorGreenDefense,
   type BoardMarkup,
   type Brush,
@@ -452,6 +451,7 @@ export function AdminPuzzleForm() {
         return;
       }
       if (
+        (wrongMode === "first" || wrongMode === "all") &&
         inWrongList &&
         count > 0 &&
         (event.key === "ArrowLeft" || event.key === "ArrowRight")
@@ -461,17 +461,10 @@ export function AdminPuzzleForm() {
         const dir = event.key === "ArrowLeft" ? -1 : 1;
         setWrongOpen(true);
         setWrongHover(null);
-        if (wrongMode === "first") {
-          setWrongEdit((current) => {
-            if (current === null) return dir < 0 ? count - 1 : 0;
-            return (current + dir + count) % count;
-          });
-        } else {
-          const total = count + 1;
-          const pos = wrongEdit === null ? 0 : wrongEdit + 1;
-          const next = (pos + dir + total) % total;
-          setWrongEdit(next === 0 ? null : next - 1);
-        }
+        setWrongEdit((current) => {
+          if (current === null) return dir < 0 ? count - 1 : 0;
+          return (current + dir + count) % count;
+        });
         setMarkupTool((tool) => (tool === "piece" ? "arrow" : tool));
         return;
       }
@@ -661,11 +654,8 @@ export function AdminPuzzleForm() {
       return withWrongMoveArrow(emptyBoardMarkup(), solutionUci);
     }
     if (clickClean) return emptyBoardMarkup();
-    if (inWrongPanel && wrongMode === "all") {
-      const base = previewingWrong
-        ? recolorGreenDefense(boardReply?.markup ?? emptyBoardMarkup())
-        : emptyBoardMarkup();
-      return withWrongMoveArrows(base, wrongUcis);
+    if (inWrongPanel && wrongMode === "all" && !previewingWrong) {
+      return withWrongMoveArrows(emptyBoardMarkup(), wrongUcis);
     }
     if (boardReply) {
       return previewingWrong
@@ -787,13 +777,11 @@ export function AdminPuzzleForm() {
                         ? solutionUci
                         : clickClean
                           ? ""
-                          : inWrongPanel
-                            ? wrongMode !== "all" &&
-                              previewingWrong &&
-                              boardReply?.answer
-                              ? boardReply.answer
-                              : ""
-                            : solutionUci
+                          : previewingWrong && boardReply?.answer
+                            ? boardReply.answer
+                            : inWrongPanel
+                              ? ""
+                              : solutionUci
                     }
                     lastMoveSquares={
                       showingMate && solutionUci.length >= 4
@@ -804,7 +792,9 @@ export function AdminPuzzleForm() {
                         : []
                     }
                     onMarkupChange={
-                      (inWrong && !selectedReply?.answer) || hoverOther
+                      (inWrong && !selectedReply?.answer) ||
+                      hoverOther ||
+                      (wrongMode === "all" && wrongEdit === null)
                         ? undefined
                         : (layer) =>
                             setForm((current) => {
@@ -1034,7 +1024,7 @@ export function AdminPuzzleForm() {
                         [
                           "all",
                           "3",
-                          "Všechny špatné tahy zelenými šipkami.",
+                          "Všechny špatné tahy zelenými šipkami. ← → po jednom se všemi šipkami.",
                         ],
                       ] as const
                     ).map(([id, label, title]) => (
@@ -1055,6 +1045,8 @@ export function AdminPuzzleForm() {
                           }
                           if (id === "all") {
                             setWrongOpen(true);
+                            setWrongEdit(null);
+                            setWrongHover(null);
                             return;
                           }
                           if (id === "first" && form.wrongReplies.length > 0) {
@@ -1099,13 +1091,6 @@ export function AdminPuzzleForm() {
                       </Button>
                     ) : null}
                     </div>
-                    {wrongOpen ? (
-                      <p className="text-xs text-muted-foreground">
-                        {wrongMode === "click"
-                          ? "← → před matem / mat. D F špatné. ↑ ↓ úlohy."
-                          : "← → špatné tahy. D F totéž. ↑ ↓ úlohy."}
-                      </p>
-                    ) : null}
                     {form.wrongReplies.map((reply, index) => (
                       <div
                         key={index}
@@ -1158,14 +1143,6 @@ export function AdminPuzzleForm() {
                             ? uciToCzechSan(startFen, reply.answer)
                             : ""}
                         </Button>
-                        {reply.markup && !isEmptyBoardMarkup(reply.markup) ? (
-                          <span
-                            className="shrink-0 text-[10px] text-red-500"
-                            title="Červené šipky"
-                          >
-                            →{reply.markup.arrows.length}
-                          </span>
-                        ) : null}
                         <Input
                           className="h-8 w-12 shrink-0 px-1 text-center text-sm uppercase"
                           maxLength={3}
