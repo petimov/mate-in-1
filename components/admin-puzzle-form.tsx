@@ -806,9 +806,9 @@ export function AdminPuzzleForm() {
                         key={id}
                         type="button"
                         title={title}
-                        className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-base ${
+                        className={`inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-sm text-muted-foreground ${
                           wrongMode === id
-                            ? "ring-1 ring-foreground"
+                            ? "ring-1 ring-foreground/25"
                             : "hover:bg-foreground/5"
                         }`}
                         onClick={() => {
@@ -997,6 +997,7 @@ export function AdminPuzzleForm() {
               </div>
                 <div className="flex h-full min-w-0 flex-1 flex-col overflow-hidden px-2 py-1">
                   <div className="flex shrink-0 flex-col gap-1.5">
+                  {toolsBar}
                 <Input
                   id="title"
                   required
@@ -1005,7 +1006,6 @@ export function AdminPuzzleForm() {
                   value={form.title}
                   onChange={(e) => setForm({ ...form, title: e.target.value })}
                 />
-                  {toolsBar}
                   </div>
                   <div className="mt-2 flex shrink-0 flex-wrap items-center gap-2">
                     <Button type="submit" className="h-10 px-5 text-sm" disabled={saving}>
@@ -1022,7 +1022,7 @@ export function AdminPuzzleForm() {
                     <div className="flex shrink-0 items-center gap-1">
                     <button
                       type="button"
-                      className="min-w-0 flex-1 cursor-pointer select-none px-1 py-1 text-left text-muted-foreground hover:text-foreground"
+                      className="cursor-pointer select-none px-1 py-1 text-left text-muted-foreground hover:text-foreground"
                       onClick={toggleWrongPanel}
                     >
                       <span className="list-item list-inside [list-style-type:disclosure-open]">
@@ -1040,9 +1040,9 @@ export function AdminPuzzleForm() {
                     >
                       +ŠT
                     </Button>
-                    {wrongModeButtons}
+                    <span className="ml-auto inline-flex">{wrongModeButtons}</span>
                     </div>
-                    <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-0.5 pb-2">
+                    <div className="mt-2.5 flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-0.5 pb-2">
                     {form.wrongReplies.map((reply, index) => (
                       <div
                         key={index}
@@ -1201,7 +1201,7 @@ export function AdminPuzzleForm() {
                   </details>
                   <details className="shrink-0 border-t border-border pt-1">
                     <summary className="cursor-pointer select-none px-1 py-1 text-muted-foreground hover:text-foreground">
-                      Vysvětlení
+                      Vysvětlení{form.explanation.trim() ? " (A)" : ""}
                     </summary>
                     <div className="flex flex-col gap-1.5 px-0.5 pb-2">
                   <Textarea
@@ -1336,8 +1336,8 @@ function RingLetter({
     <button
       type="button"
       title={title}
-      className={`inline-flex h-8 min-w-8 items-center justify-center rounded-full px-1.5 text-base ${
-        active ? "ring-1 ring-foreground" : "hover:bg-foreground/5"
+      className={`inline-flex h-6 min-w-6 items-center justify-center rounded-full px-1 text-sm text-muted-foreground ${
+        active ? "ring-1 ring-foreground/25" : "hover:bg-foreground/5"
       }`}
       onClick={onClick}
     >
