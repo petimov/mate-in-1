@@ -30,6 +30,14 @@ export const BOARD_THEMES: BoardTheme[] = [
     lightTexture: "/board/babinga-light.png",
     darkTexture: "/board/babinga-dark.png",
   },
+  {
+    id: "maple",
+    name: "Maple",
+    light: "#efd3ae",
+    dark: "#c16838",
+    grain: true,
+    texture: "/board/maple-check.jpg?v=2",
+  },
   { id: "green", name: "Zelená", light: "#e8edc5", dark: "#3d4f3f" },
   { id: "brown", name: "Hnědá", light: "#f0d9b5", dark: "#b58863" },
   { id: "lichess", name: "Lichess", light: "#ffffdd", dark: "#86a666" },
@@ -144,12 +152,21 @@ export function woodSquareCss(
   theme: BoardTheme,
   square: string,
 ): CSSProperties | null {
-  if ((!theme.lightTexture && !theme.texture) || square.length < 2) return null;
+  if (square.length < 2) return null;
   const col = square.charCodeAt(0) - 97;
   const rank = Number(square[1]);
   if (col < 0 || col > 7 || rank < 1 || rank > 8) return null;
   const row = 8 - rank;
   const dark = (col + row) % 2 === 1;
+  if (theme.texture && !theme.lightTexture) {
+    return {
+      backgroundColor: dark ? theme.dark : theme.light,
+      backgroundImage: `url(${theme.texture})`,
+      backgroundSize: "800% 800%",
+      backgroundPosition: `${(col / 7) * 100}% ${(row / 7) * 100}%`,
+    };
+  }
+  if (!theme.lightTexture && !theme.texture) return null;
   const tile = dark ? theme.darkTexture : theme.lightTexture;
   if (tile) {
     return {

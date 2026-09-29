@@ -1,5 +1,8 @@
+"use client";
+
 import type { ReactNode } from "react";
 
+import { useBoardAppearance } from "@/components/board-appearance-provider";
 import {
   LichessArrows,
   type LichessArrow,
@@ -27,6 +30,7 @@ export function BoardFrame({
   className,
   children,
 }: BoardFrameProps) {
+  const { board } = useBoardAppearance();
   const dot = fen ? sideToMoveDot(fen) : (turn ?? null);
   const ranks =
     orientation === "black" ? [...RANKS_WHITE].reverse() : RANKS_WHITE;
@@ -43,7 +47,20 @@ export function BoardFrame({
           <span key={rank}>{rank}</span>
         ))}
       </div>
-      <div className="board-frame-board">
+      <div
+        className="board-frame-board"
+        style={
+          board.texture
+            ? {
+                backgroundImage: `url(${board.texture})`,
+                backgroundSize: "100% 100%",
+              }
+            : {
+                backgroundImage: "none",
+                backgroundColor: board.dark,
+              }
+        }
+      >
         {children}
         <LichessArrows arrows={arrows} orientation={orientation} />
       </div>

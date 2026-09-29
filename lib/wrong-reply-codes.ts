@@ -26,6 +26,7 @@ export const WRONG_REPLY_CODES: Record<string, ReplyVoices> = {
   vj: line("Toto není mat, protože soupeř může vzít našeho jezdce."),
   vp: line("Toto není mat, protože soupeř může vzít našeho pěšce."),
   k: line("Toto není mat, protože soupeř může šach přerušit."),
+  z: line("Toto není mat, protože soupeř může šachu zabránit."),
   n: line("Toto není mat, protože to není šach."),
 };
 

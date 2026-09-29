@@ -43,7 +43,16 @@ export function BoardLookPicker() {
             )}
           >
             <span className="grid aspect-square grid-cols-2 grid-rows-2">
-              {(["light", "dark", "dark", "light"] as const).map((kind, i) => (
+              {theme.texture ? (
+                <span
+                  className="col-span-2 row-span-2"
+                  style={{
+                    backgroundImage: `url(${theme.texture})`,
+                    backgroundSize: "100% 100%",
+                  }}
+                />
+              ) : (
+                (["light", "dark", "dark", "light"] as const).map((kind, i) => (
                 <span
                   key={`${theme.id}-${i}`}
                   style={{
@@ -58,7 +67,8 @@ export function BoardLookPicker() {
                     backgroundSize: "cover",
                   }}
                 />
-              ))}
+                ))
+              )}
             </span>
           </button>
         ))}

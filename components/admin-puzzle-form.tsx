@@ -1142,6 +1142,37 @@ export function AdminPuzzleForm() {
                         >
                           ×
                         </button>
+                        {!replyCodeForInput(reply.text) ? (
+                          <>
+                            {(
+                              [
+                                ["u", "U", "Král uteče"],
+                                ["z", "Z", "Zabrání šachu"],
+                              ] as const
+                            ).map(([code, label, title]) => (
+                              <button
+                                key={code}
+                                type="button"
+                                title={title}
+                                className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-md border border-border text-base hover:bg-foreground/5"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  setForm({
+                                    ...form,
+                                    wrongReplies: form.wrongReplies.map(
+                                      (item, itemIndex) =>
+                                        itemIndex === index
+                                          ? { ...item, text: code }
+                                          : item,
+                                    ),
+                                  });
+                                }}
+                              >
+                                {label}
+                              </button>
+                            ))}
+                          </>
+                        ) : null}
                       </div>
                     ))}
                     </div>
