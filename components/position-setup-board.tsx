@@ -138,14 +138,15 @@ export function PositionSetupBoard({
   const turn = fenTurn(displayFen);
   const valid = isValidFen(displayFen);
   const layer = markup;
-  const canMarkup = Boolean(onMarkupChange && !spare);
+  const setupMode = tool === "piece" && !playMode;
+  const canMarkup = Boolean(onMarkupChange && !setupMode && !spare);
   const canPlay = playMode && !moveLocked && Boolean(onPlayMove);
 
   useEffect(() => {
     setSelected(null);
     selectedRef.current = null;
     setSpare(null);
-  }, [displayFen, playMode]);
+  }, [displayFen, playMode, setupMode]);
 
   const dests = useMemo(() => {
     if (!canPlay || !selected || !valid) return [];
@@ -243,13 +244,24 @@ export function PositionSetupBoard({
         if (isSideToMove(game, square)) setSelected(square);
         return;
       }
-      if (spare) {
-        onChange(setFenPiece(displayFen, square, spare));
+      if (setupMode) {
+        if (spare) {
+          onChange(setFenPiece(displayFen, square, spare));
+        }
         return;
       }
       onToggleSquare?.(square);
     },
-    [displayFen, moveLocked, onChange, onToggleSquare, playMode, spare, tryLegal],
+    [
+      displayFen,
+      moveLocked,
+      onChange,
+      onToggleSquare,
+      playMode,
+      setupMode,
+      spare,
+      tryLegal,
+    ],
   );
 
   const onSquareRightClick = useCallback(
@@ -258,13 +270,14 @@ export function PositionSetupBoard({
         skipClickRef.current = false;
         return;
       }
-      if (canMarkup) {
-        applyPointMarkup(square);
+      if (playMode) return;
+      if (setupMode) {
+        onChange(setFenPiece(displayFen, square, null));
         return;
       }
-      onChange(setFenPiece(displayFen, square, null));
+      if (canMarkup) applyPointMarkup(square);
     },
-    [applyPointMarkup, canMarkup, displayFen, onChange],
+    [applyPointMarkup, canMarkup, displayFen, onChange, playMode, setupMode],
   );
 
   const onSquareMouseDown = useCallback(
@@ -297,6 +310,7 @@ export function PositionSetupBoard({
         if (!targetSquare) return false;
         return tryLegal(sourceSquare, targetSquare, piece.pieceType);
       }
+      if (!setupMode) return false;
       if (!targetSquare) {
         if (sourceSquare) onChange(setFenPiece(displayFen, sourceSquare, null));
         return true;
@@ -305,7 +319,7 @@ export function PositionSetupBoard({
       onChange(moveFenPiece(displayFen, sourceSquare, targetSquare));
       return true;
     },
-    [displayFen, onChange, playMode, tryLegal],
+    [displayFen, onChange, playMode, setupMode, tryLegal],
   );
 
   const squareRenderer = useCallback(
@@ -344,7 +358,7 @@ export function PositionSetupBoard({
       position: displayFen,
       boardOrientation: orientation,
       pieces,
-      allowDragging: playMode ? canPlay : !spare,
+      allowDragging: playMode ? canPlay : setupMode && !spare,
       allowDragOffBoard: !playMode,
       allowDrawingArrows: false,
       showAnimations: false,
@@ -372,6 +386,7 @@ export function PositionSetupBoard({
       spare,
       canPlay,
       playMode,
+      setupMode,
       onPieceDrop,
       handleSquare,
       onSquareMouseDown,
@@ -388,7 +403,7 @@ export function PositionSetupBoard({
       ref={rootRef}
       className={cn("flex min-h-0 flex-col gap-0", className)}
     >
-      {playMode ? null : (
+      {setupMode ? (
       <div data-setup-chrome>
         <PieceTray
           pieces={pieces}
@@ -397,7 +412,7 @@ export function PositionSetupBoard({
           onSelect={setSpare}
         />
       </div>
-      )}
+      ) : null}
       <div
         className="relative shrink-0 overflow-visible"
         onContextMenu={(event) => event.preventDefault()}
@@ -419,7 +434,7 @@ export function PositionSetupBoard({
             <Chessboard key={`${board.id}-${boardId}-${orientation}`} options={options} />
           </BoardFrame>
       </div>
-      {playMode ? null : (
+      {setupMode ? (
       <div
         data-setup-chrome
         className="relative flex shrink-0 items-center justify-center"
@@ -467,7 +482,7 @@ export function PositionSetupBoard({
           onSelect={setSpare}
         />
       </div>
-      )}
+      ) : null}
       {!valid && fen.trim() ? (
         <p className="text-[10px] text-amber-500">Neplatný FEN</p>
       ) : null}

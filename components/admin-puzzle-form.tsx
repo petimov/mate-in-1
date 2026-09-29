@@ -435,6 +435,9 @@ export function AdminPuzzleForm() {
         setWrongEdit(null);
         setWrongHover(null);
         setMarkupPhase(event.key === "ArrowLeft" ? "before" : "after");
+        if (event.key === "ArrowRight") {
+          setMarkupTool((tool) => (tool === "piece" ? "arrow" : tool));
+        }
         return;
       }
       if (count > 0 && (up || down)) {
@@ -475,6 +478,7 @@ export function AdminPuzzleForm() {
       if (event.key === "ArrowRight") {
         event.preventDefault();
         setMarkupPhase("after");
+        setMarkupTool((tool) => (tool === "piece" ? "arrow" : tool));
       }
     }
     window.addEventListener("keydown", onKey, true);
@@ -545,6 +549,21 @@ export function AdminPuzzleForm() {
     setWrongOpen(true);
     setWrongEdit(index);
     if (markupTool === "piece") setMarkupTool("arrow");
+  }
+
+  function toggleWrongPanel() {
+    if (wrongOpen) {
+      setWrongOpen(false);
+      setWrongEdit(null);
+      setWrongHover(null);
+      return;
+    }
+    setWrongOpen(true);
+    if (wrongMode !== "first" || form.wrongReplies.length === 0) {
+      return;
+    }
+    setWrongEdit((current) => (current === null ? 0 : current));
+    setMarkupTool((tool) => (tool === "piece" ? "arrow" : tool));
   }
 
   async function onSave(event: FormEvent) {
@@ -673,6 +692,153 @@ export function AdminPuzzleForm() {
     selectedChapterId ?? form.chapterId,
   );
 
+  const toolsBar = (
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      className="h-8 min-w-[4.5rem] rounded-md border border-border px-2 font-mono"
+                      disabled={!isValidFen(form.fen)}
+                      title={
+                        form.kind === "squares"
+                          ? "Upravit pole"
+                          : "Upravit tah"
+                      }
+                      onClick={() => {
+                        if (form.kind === "squares") {
+                          setBoardOpen(true);
+                          return;
+                        }
+                        setPlayTarget("solution");
+                      }}
+                    >
+                      {form.kind === "squares"
+                        ? form.squares || "…"
+                        : solutionSan || "…"}
+                    </button>
+                    <RingLetter
+                      active={markupTool === "piece"}
+                      title="Upravit pozici"
+                      onClick={() => {
+                        if (markupTool === "piece") {
+                          setMarkupTool("arrow");
+                          return;
+                        }
+                        setMarkupTool("piece");
+                        setMarkupPhase("before");
+                        setWrongEdit(null);
+                        setPlayTarget(null);
+                      }}
+                    >
+                      UP
+                    </RingLetter>
+                    <span className="inline-flex">
+                      <RingLetter
+                        active={form.kind === "move"}
+                        title="Tahy"
+                        onClick={() => {
+                          setForm({ ...form, kind: "move" });
+                          setBoardOpen(false);
+                          if (stepReset === "before") setMarkupPhase("before");
+                        }}
+                      >
+                        T
+                      </RingLetter>
+                      <RingLetter
+                        active={form.kind === "squares"}
+                        title="Políčka"
+                        onClick={() => {
+                          setForm({ ...form, kind: "squares" });
+                          setPlayTarget(null);
+                          setMarkupPhase("before");
+                        }}
+                      >
+                        P
+                      </RingLetter>
+                    </span>
+                    <span className="inline-flex">
+                      <RingLetter
+                        active={stepReset === "keep"}
+                        title="Nemění se před/po"
+                        onClick={() => {
+                          setStepReset("keep");
+                          writeAdminStepReset("keep");
+                        }}
+                      >
+                        N
+                      </RingLetter>
+                      <RingLetter
+                        active={stepReset === "before"}
+                        title="Mění se — vždy před tahem"
+                        onClick={() => {
+                          setStepReset("before");
+                          writeAdminStepReset("before");
+                          setMarkupPhase("before");
+                        }}
+                      >
+                        M
+                      </RingLetter>
+                    </span>
+                  </div>
+  );
+
+  const wrongModeButtons = (
+                    <>
+                    {(
+                      [
+                        [
+                          "click",
+                          "1",
+                          "Výchozí pozice. Špatný tah až po kliknutí. ← → před matem / mat.",
+                        ],
+                        [
+                          "first",
+                          "2",
+                          "První špatný tah hned na šachovnici.",
+                        ],
+                        [
+                          "all",
+                          "3",
+                          "Všechny špatné tahy zelenými šipkami. ← → po jednom se všemi šipkami.",
+                        ],
+                      ] as const
+                    ).map(([id, label, title]) => (
+                      <button
+                        key={id}
+                        type="button"
+                        title={title}
+                        className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-base ${
+                          wrongMode === id
+                            ? "ring-1 ring-foreground"
+                            : "hover:bg-foreground/5"
+                        }`}
+                        onClick={() => {
+                          setWrongMode(id);
+                          writeAdminWrongMode(id);
+                          if (id === "click") {
+                            setWrongEdit(null);
+                            setWrongHover(null);
+                            return;
+                          }
+                          if (id === "all") {
+                            setWrongOpen(true);
+                            setWrongEdit(null);
+                            setWrongHover(null);
+                            return;
+                          }
+                          if (id === "first" && form.wrongReplies.length > 0) {
+                            setWrongOpen(true);
+                            setWrongEdit((current) =>
+                              current === null ? 0 : current,
+                            );
+                          }
+                        }}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                    </>
+  );
+
   return (
     <div className="flex min-h-0 w-full flex-1 flex-col overflow-hidden">
       <details className="shrink-0 text-[14px] leading-none">
@@ -723,6 +889,7 @@ export function AdminPuzzleForm() {
                 setWrongEdit(null);
                 setWrongHover(null);
                 setStatus(null);
+                if (stepReset === "before") setMarkupPhase("before");
               }}
               onDeletePuzzles={(ids) => void onDeletePuzzles(ids)}
               onDeleteSubtree={(ids, label) => void onDeleteSubtree(ids, label)}
@@ -829,7 +996,18 @@ export function AdminPuzzleForm() {
                   />
               </div>
                 <div className="flex h-full min-w-0 flex-1 flex-col overflow-hidden px-2 py-1">
-                  <div className="flex shrink-0 flex-wrap items-center gap-2">
+                  <div className="flex shrink-0 flex-col gap-1.5">
+                <Input
+                  id="title"
+                  required
+                  className="h-8 px-2"
+                  placeholder="Název"
+                  value={form.title}
+                  onChange={(e) => setForm({ ...form, title: e.target.value })}
+                />
+                  {toolsBar}
+                  </div>
+                  <div className="mt-2 flex shrink-0 flex-wrap items-center gap-2">
                     <Button type="submit" className="h-10 px-5 text-sm" disabled={saving}>
                       {saving ? "Ukládám…" : "Uložit"}
                     </Button>
@@ -839,86 +1017,137 @@ export function AdminPuzzleForm() {
                       </span>
                     ) : null}
                   </div>
-                  <div className="mt-1 flex shrink-0 flex-wrap gap-1">
-                    <Button
+                  {wrongOpen ? (
+                  <div className="mt-2 flex min-h-0 flex-1 flex-col">
+                    <div className="flex shrink-0 items-center gap-1">
+                    <button
                       type="button"
-                      size="sm"
-                      variant={markupTool === "piece" ? "default" : "ghost"}
-                      onClick={() =>
-                        setMarkupTool((current) =>
-                          current === "piece" ? "arrow" : "piece",
-                        )
-                      }
+                      className="min-w-0 flex-1 cursor-pointer select-none px-1 py-1 text-left text-muted-foreground hover:text-foreground"
+                      onClick={toggleWrongPanel}
                     >
-                      Upravit pozici
-                    </Button>
+                      <span className="list-item list-inside [list-style-type:disclosure-open]">
+                      ŠT
+                      {form.wrongReplies.length
+                        ? ` (${form.wrongReplies.length})`
+                        : ""}
+                      </span>
+                    </button>
                     <Button
                       type="button"
-                      size="sm"
-                      variant={form.kind === "move" ? "default" : "ghost"}
-                      onClick={() => setForm({ ...form, kind: "move" })}
-                    >
-                      Zahraj tah
-                    </Button>
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant={form.kind === "squares" ? "default" : "ghost"}
-                      onClick={() => setForm({ ...form, kind: "squares" })}
-                    >
-                      Označ pole
-                    </Button>
-                  </div>
-                  <div className="mt-2 flex shrink-0 flex-col gap-1.5">
-                <Input
-                  id="title"
-                  required
-                  className="h-8 px-2"
-                  placeholder="Název"
-                  value={form.title}
-                  onChange={(e) => setForm({ ...form, title: e.target.value })}
-                />
-              {form.kind === "move" ? (
-                  <div className="flex items-center gap-1">
-                    <Button
-                      type="button"
-                      size="sm"
-                      className="h-8 shrink-0 px-2"
+                      className="h-9 px-3"
                       disabled={!isValidFen(form.fen)}
-                      onClick={() => setPlayTarget("solution")}
+                      onClick={addWrongReply}
                     >
-                      Tah
+                      +ŠT
                     </Button>
-                    {solutionSan ? (
-                      <span className="text-sm">{solutionSan}</span>
-                    ) : null}
+                    {wrongModeButtons}
+                    </div>
+                    <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-0.5 pb-2">
+                    {form.wrongReplies.map((reply, index) => (
+                      <div
+                        key={index}
+                        tabIndex={-1}
+                        data-wrong-tah={index}
+                        onClick={() => {
+                          setWrongEdit(index);
+                          if (markupTool === "piece") setMarkupTool("arrow");
+                        }}
+                        onMouseEnter={() => setWrongHover(index)}
+                        onMouseLeave={() =>
+                          setWrongHover((current) =>
+                            current === index ? null : current,
+                          )
+                        }
+                        className={`flex cursor-pointer items-center gap-2 outline-none ${wrongEdit === index ? "rounded bg-foreground/5 ring-1 ring-foreground/20" : wrongHover === index ? "rounded bg-foreground/5" : ""}`}
+                      >
+                        <Button
+                          type="button"
+                          variant="outline"
+                          className={`h-11 min-w-[6rem] shrink-0 border-yellow-300 bg-yellow-200 px-2 font-mono text-zinc-900 hover:bg-yellow-300 dark:border-yellow-400 dark:bg-yellow-300/80 ${reply.answer ? "" : "text-muted-foreground"}`}
+                          title={
+                            wrongEdit === index && reply.answer
+                              ? "Znovu zahrát"
+                              : reply.answer
+                                ? reply.answer
+                                : "Zahrát špatný tah"
+                          }
+                          disabled={!isValidFen(form.fen)}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            if (wrongEdit === index) {
+                              setForm((current) => {
+                                const next = [...current.wrongReplies];
+                                const row = next[index];
+                                if (!row) return current;
+                                next[index] = { ...row, answer: "" };
+                                return { ...current, wrongReplies: next };
+                              });
+                              return;
+                            }
+                            setWrongEdit(index);
+                            if (markupTool === "piece") setMarkupTool("arrow");
+                          }}
+                        >
+                          {reply.answer && isValidFen(startFen)
+                            ? uciToCzechSan(startFen, reply.answer)
+                            : ""}
+                        </Button>
+                        <Input
+                          className={`h-11 w-16 shrink-0 px-1 text-center uppercase ${
+                            replyCodeForInput(reply.text)
+                              ? ""
+                              : "border-red-600 bg-red-500 text-white placeholder:text-white/70"
+                          }`}
+                          maxLength={3}
+                          placeholder=""
+                          autoComplete="off"
+                          spellCheck={false}
+                          title={
+                            resolveWrongReplyText(reply.text) ||
+                            (reply.text ? "není v tabulce" : "kód, max 3 písmena")
+                          }
+                          value={replyCodeForInput(reply.text)}
+                          onChange={(event) => {
+                            const text = normalizeReplyCode(event.target.value);
+                            setForm({
+                              ...form,
+                              wrongReplies: form.wrongReplies.map((item, itemIndex) =>
+                                itemIndex === index ? { ...item, text } : item,
+                              ),
+                            });
+                          }}
+                        />
+                        <button
+                          type="button"
+                          className="shrink-0 px-2 text-lg leading-none text-muted-foreground hover:text-foreground"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            setForm({
+                              ...form,
+                              wrongReplies: form.wrongReplies.filter(
+                                (_, itemIndex) => itemIndex !== index,
+                              ),
+                            });
+                            setWrongHover((current) => {
+                              if (current === null) return current;
+                              if (current === index) return null;
+                              return current > index ? current - 1 : current;
+                            });
+                            setWrongEdit((current) => {
+                              if (current === null) return null;
+                              if (current === index) return null;
+                              return current > index ? current - 1 : current;
+                            });
+                          }}
+                        >
+                          ×
+                        </button>
+                      </div>
+                    ))}
+                    </div>
                   </div>
-              ) : (
-                  <div className="flex gap-1">
-                    <Input
-                      id="squares"
-                      required
-                      className="h-8 px-2"
-                      placeholder="Pole b3 b5…"
-                      value={form.squares}
-                      onChange={(e) =>
-                        setForm({ ...form, squares: e.target.value })
-                      }
-                    />
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      className="h-8 shrink-0 px-2"
-                      disabled={!isValidFen(form.fen)}
-                      onClick={() => setBoardOpen(true)}
-                    >
-                      Pole
-                    </Button>
-                  </div>
-              )}
-                  </div>
-                  <div className="mt-2 flex min-h-0 flex-1 flex-col overflow-y-auto text-base">
+                  ) : null}
+                  <div className={wrongOpen ? "max-h-[42%] shrink-0 overflow-y-auto border-t border-border pt-1 text-base" : "mt-2 flex min-h-0 flex-1 flex-col overflow-y-auto text-base"}>
                   <details className="shrink-0 border-t border-border pt-1">
                     <summary className="cursor-pointer select-none px-1 py-1 text-muted-foreground hover:text-foreground">
                       Značky
@@ -933,7 +1162,14 @@ export function AdminPuzzleForm() {
                   kind={form.kind}
                   canAfter={Boolean(afterFen)}
                   hidePhase={wrongEdit !== null}
-                  onPhase={setMarkupPhase}
+                  onPhase={(phase) => {
+                    setMarkupPhase(phase);
+                    if (phase === "after") {
+                      setMarkupTool((tool) =>
+                        tool === "piece" ? "arrow" : tool,
+                      );
+                    }
+                  }}
                   onTool={setMarkupTool}
                   onBrush={(brush) =>
                     setMarkupBrush(
@@ -980,6 +1216,25 @@ export function AdminPuzzleForm() {
                   />
                     </div>
                   </details>
+                  {!wrongOpen ? (
+                  <div className="shrink-0 border-t border-border pt-1">
+                    <div className="flex shrink-0 items-center gap-1">
+                    <button
+                      type="button"
+                      className="min-w-0 flex-1 cursor-pointer select-none px-1 py-1 text-left text-muted-foreground hover:text-foreground"
+                      onClick={toggleWrongPanel}
+                    >
+                      <span className="list-item list-inside [list-style-type:disclosure-closed]">
+                      Špatné tahy
+                      {form.wrongReplies.length
+                        ? ` (${form.wrongReplies.length})`
+                        : ""}
+                      </span>
+                    </button>
+                    {wrongModeButtons}
+                    </div>
+                  </div>
+                  ) : null}
                   <details className="shrink-0 border-t border-border pt-1">
                     <summary className="cursor-pointer select-none px-1 py-1 text-muted-foreground hover:text-foreground">
                       Údaje
@@ -1035,255 +1290,6 @@ export function AdminPuzzleForm() {
                 />
                     </div>
                   </details>
-                  <details className="shrink-0 border-t border-border pt-1">
-                    <summary className="cursor-pointer select-none px-1 py-1 text-muted-foreground hover:text-foreground">
-                      Z/X
-                    </summary>
-                    <div className="flex flex-wrap gap-1 px-0.5 pb-2">
-                      <Button
-                        type="button"
-                        size="sm"
-                        className="h-9 text-base"
-                        variant={stepReset === "keep" ? "default" : "ghost"}
-                        onClick={() => {
-                          setStepReset("keep");
-                          writeAdminStepReset("keep");
-                        }}
-                      >
-                        Nechat Před/Po
-                      </Button>
-                      <Button
-                        type="button"
-                        size="sm"
-                        className="h-9 text-base"
-                        variant={stepReset === "before" ? "default" : "ghost"}
-                        onClick={() => {
-                          setStepReset("before");
-                          writeAdminStepReset("before");
-                        }}
-                      >
-                        Vždy před tahem
-                      </Button>
-                    </div>
-                  </details>
-                  <div className="shrink-0 border-t border-border pt-1">
-                    <div className="flex shrink-0 items-center gap-1">
-                    <button
-                      type="button"
-                      className="min-w-0 flex-1 cursor-pointer select-none px-1 py-2 text-left text-muted-foreground hover:text-foreground"
-                      onClick={() => {
-                        if (wrongOpen) {
-                          setWrongOpen(false);
-                          setWrongEdit(null);
-                          setWrongHover(null);
-                          return;
-                        }
-                        setWrongOpen(true);
-                        if (wrongMode !== "first" || form.wrongReplies.length === 0) {
-                          return;
-                        }
-                        setWrongEdit((current) =>
-                          current === null ? 0 : current,
-                        );
-                        setMarkupTool((tool) =>
-                          tool === "piece" ? "arrow" : tool,
-                        );
-                      }}
-                    >
-                      <span
-                        className={`list-item list-inside ${wrongOpen ? "[list-style-type:disclosure-open]" : "[list-style-type:disclosure-closed]"}`}
-                      >
-                      Špatné tahy
-                      {form.wrongReplies.length
-                        ? ` (${form.wrongReplies.length})`
-                        : ""}
-                      </span>
-                    </button>
-                    {(
-                      [
-                        [
-                          "click",
-                          "1",
-                          "Výchozí pozice. Špatný tah až po kliknutí. ← → před matem / mat.",
-                        ],
-                        [
-                          "first",
-                          "2",
-                          "První špatný tah hned na šachovnici.",
-                        ],
-                        [
-                          "all",
-                          "3",
-                          "Všechny špatné tahy zelenými šipkami. ← → po jednom se všemi šipkami.",
-                        ],
-                      ] as const
-                    ).map(([id, label, title]) => (
-                      <Button
-                        key={id}
-                        type="button"
-                        size="sm"
-                        title={title}
-                        variant={wrongMode === id ? "default" : "ghost"}
-                        className="h-9 w-9 shrink-0 px-0"
-                        onClick={() => {
-                          setWrongMode(id);
-                          writeAdminWrongMode(id);
-                          if (id === "click") {
-                            setWrongEdit(null);
-                            setWrongHover(null);
-                            return;
-                          }
-                          if (id === "all") {
-                            setWrongOpen(true);
-                            setWrongEdit(null);
-                            setWrongHover(null);
-                            return;
-                          }
-                          if (id === "first" && form.wrongReplies.length > 0) {
-                            setWrongOpen(true);
-                            setWrongEdit((current) =>
-                              current === null ? 0 : current,
-                            );
-                          }
-                        }}
-                      >
-                        {label}
-                      </Button>
-                    ))}
-                    </div>
-                    {wrongOpen ? (
-                    <div className="px-0.5 pb-2">
-                  <div className="flex flex-col gap-2">
-                    <div className="flex shrink-0 flex-wrap items-center gap-2">
-                    <Button
-                      type="button"
-                      className="h-11 px-6"
-                      disabled={!isValidFen(form.fen)}
-                      onClick={addWrongReply}
-                    >
-                      + špatný tah
-                    </Button>
-                    {wrongEdit !== null ? (
-                      <Button
-                        type="button"
-                        variant="outline"
-                        className="h-11 px-5"
-                        onClick={() => {
-                          setWrongHover(null);
-                          if (wrongMode === "first" && form.wrongReplies.length > 0) {
-                            setWrongEdit(0);
-                            return;
-                          }
-                          setWrongEdit(null);
-                        }}
-                      >
-                        Hotovo
-                      </Button>
-                    ) : null}
-                    </div>
-                    {form.wrongReplies.map((reply, index) => (
-                      <div
-                        key={index}
-                        tabIndex={-1}
-                        data-wrong-tah={index}
-                        onClick={() => {
-                          setWrongOpen(true);
-                          setWrongEdit(index);
-                          if (markupTool === "piece") setMarkupTool("arrow");
-                        }}
-                        onMouseEnter={() => setWrongHover(index)}
-                        onMouseLeave={() =>
-                          setWrongHover((current) =>
-                            current === index ? null : current,
-                          )
-                        }
-                        className={`flex cursor-pointer items-center gap-2 outline-none ${wrongEdit === index ? "rounded bg-foreground/5 ring-1 ring-foreground/20" : wrongHover === index ? "rounded bg-foreground/5" : ""}`}
-                      >
-                        <Button
-                          type="button"
-                          variant="outline"
-                          className={`h-11 min-w-[6rem] shrink-0 px-2 font-mono ${reply.answer ? "" : "text-muted-foreground"}`}
-                          title={
-                            wrongEdit === index && reply.answer
-                              ? "Znovu zahrát"
-                              : reply.answer
-                                ? reply.answer
-                                : "Zahrát špatný tah"
-                          }
-                          disabled={!isValidFen(form.fen)}
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            if (wrongEdit === index) {
-                              setForm((current) => {
-                                const next = [...current.wrongReplies];
-                                const row = next[index];
-                                if (!row) return current;
-                                next[index] = { ...row, answer: "" };
-                                return { ...current, wrongReplies: next };
-                              });
-                              return;
-                            }
-                            setWrongOpen(true);
-                            setWrongEdit(index);
-                            if (markupTool === "piece") setMarkupTool("arrow");
-                          }}
-                        >
-                          {reply.answer && isValidFen(startFen)
-                            ? uciToCzechSan(startFen, reply.answer)
-                            : ""}
-                        </Button>
-                        <Input
-                          className="h-11 w-16 shrink-0 px-1 text-center uppercase"
-                          maxLength={3}
-                          placeholder=""
-                          autoComplete="off"
-                          spellCheck={false}
-                          title={
-                            resolveWrongReplyText(reply.text) ||
-                            (reply.text ? "není v tabulce" : "kód, max 3 písmena")
-                          }
-                          value={replyCodeForInput(reply.text)}
-                          onChange={(event) => {
-                            const text = normalizeReplyCode(event.target.value);
-                            setForm({
-                              ...form,
-                              wrongReplies: form.wrongReplies.map((item, itemIndex) =>
-                                itemIndex === index ? { ...item, text } : item,
-                              ),
-                            });
-                          }}
-                        />
-                        <button
-                          type="button"
-                          className="shrink-0 px-2 text-lg leading-none text-muted-foreground hover:text-foreground"
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            setForm({
-                              ...form,
-                              wrongReplies: form.wrongReplies.filter(
-                                (_, itemIndex) => itemIndex !== index,
-                              ),
-                            });
-                            setWrongHover((current) => {
-                              if (current === null) return current;
-                              if (current === index) return null;
-                              return current > index ? current - 1 : current;
-                            });
-                            setWrongEdit((current) => {
-                              if (current === null) return null;
-                              if (current === index) return null;
-                              return current > index ? current - 1 : current;
-                            });
-                          }}
-                        >
-                          ×
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                    </div>
-                    ) : null}
-                  </div>
                   </div>
               </div>
             </form>
@@ -1312,6 +1318,31 @@ export function AdminPuzzleForm() {
         }}
       />
     </div>
+  );
+}
+
+function RingLetter({
+  active,
+  title,
+  onClick,
+  children,
+}: {
+  active: boolean;
+  title: string;
+  onClick: () => void;
+  children: string;
+}) {
+  return (
+    <button
+      type="button"
+      title={title}
+      className={`inline-flex h-8 min-w-8 items-center justify-center rounded-full px-1.5 text-base ${
+        active ? "ring-1 ring-foreground" : "hover:bg-foreground/5"
+      }`}
+      onClick={onClick}
+    >
+      {children}
+    </button>
   );
 }
 
