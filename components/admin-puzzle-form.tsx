@@ -495,6 +495,28 @@ export function AdminPuzzleForm() {
   }, [wrongEdit]);
 
   useEffect(() => {
+    if (wrongMode !== "all") return;
+    function onClick(event: MouseEvent) {
+      if (wrongEdit === null) return;
+      const el = event.target as HTMLElement | null;
+      if (el?.closest?.("button, input, textarea, select, label, summary")) {
+        return;
+      }
+      const reply = form.wrongReplies[wrongEdit];
+      if (
+        !reply?.answer &&
+        el?.closest?.(".board-frame, .cg-board-host, cg-board")
+      ) {
+        return;
+      }
+      setWrongEdit(null);
+      setWrongHover(null);
+    }
+    window.addEventListener("click", onClick);
+    return () => window.removeEventListener("click", onClick);
+  }, [form.wrongReplies, wrongEdit, wrongMode]);
+
+  useEffect(() => {
     if (wrongEdit === null) return;
     setMarkupBrush((brush) => (brush === "green" ? "red" : brush));
   }, [wrongEdit]);
@@ -525,8 +547,7 @@ export function AdminPuzzleForm() {
     });
     setSelectedChapterId(puzzle.chapterId ?? null);
     const hasWrong = Boolean(puzzle.wrongReplies?.length);
-    setWrongOpen((open) => open || hasWrong);
-    setWrongEdit(wrongMode === "first" && hasWrong ? 0 : null);
+    setWrongEdit(wrongOpen && wrongMode === "first" && hasWrong ? 0 : null);
     setWrongHover(null);
     setStatus(null);
     if (stepReset === "before") setMarkupPhase("before");
