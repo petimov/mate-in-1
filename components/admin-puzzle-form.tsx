@@ -84,8 +84,32 @@ function emptyForm() {
   };
 }
 
+type PuzzleForm = ReturnType<typeof emptyForm>;
+
+function formFingerprint(form: PuzzleForm): string {
+  return JSON.stringify({
+    id: form.id,
+    title: form.title,
+    fen: form.fen,
+    kind: form.kind,
+    move: form.move,
+    squares: form.squares,
+    theme: form.theme,
+    level: form.level,
+    hint: form.hint,
+    source: form.source,
+    explanation: form.explanation,
+    videoUrl: form.videoUrl,
+    wrongReplies: form.wrongReplies,
+    markup: form.markup,
+  });
+}
+
 export function AdminPuzzleForm() {
   const [form, setForm] = useState(emptyForm);
+  const [savedPrint, setSavedPrint] = useState(() =>
+    formFingerprint(emptyForm()),
+  );
   const [puzzles, setPuzzles] = useState<Puzzle[]>([]);
   const [curriculum, setCurriculum] = useState<Curriculum>(DEMO_CURRICULUM);
   const [courseId, setCourseId] = useState(DEMO_CURRICULUM.courses[0]?.id ?? "");
@@ -193,6 +217,7 @@ export function AdminPuzzleForm() {
     setCourseId(snap.courseId);
     setSelectedChapterId(snap.selectedChapterId);
     setForm(snap.form);
+    setSavedPrint(formFingerprint(snap.form));
 
     const res = await fetch("/api/curriculum", {
       method: "POST",
@@ -259,7 +284,9 @@ export function AdminPuzzleForm() {
       return next;
     });
     if (form.id && drop.has(form.id)) {
-      setForm(emptyForm());
+      const blank = emptyForm();
+      setForm(blank);
+      setSavedPrint(formFingerprint(blank));
     }
     setStatus(`Smazáno ${data.deleted ?? unique.length}. Ctrl+Z vrátí.`);
   }
@@ -521,8 +548,18 @@ export function AdminPuzzleForm() {
     setMarkupBrush((brush) => (brush === "green" ? "red" : brush));
   }, [wrongEdit]);
 
+  const dirty = formFingerprint(form) !== savedPrint;
+  useEffect(() => {
+    if (!dirty) return;
+    setStatus((current) =>
+      current === "Úloha uložená." || current === "Úloha vytvořená."
+        ? null
+        : current,
+    );
+  }, [dirty]);
+
   function loadPuzzle(puzzle: Puzzle) {
-    setForm({
+    const next: PuzzleForm = {
       id: puzzle.id,
       title: puzzle.title,
       fen: puzzle.fen,
@@ -544,7 +581,9 @@ export function AdminPuzzleForm() {
       markup: clonePuzzleMarkup(puzzle.markup),
       chapterId: puzzle.chapterId ?? null,
       sort: puzzle.sort ?? 0,
-    });
+    };
+    setForm(next);
+    setSavedPrint(formFingerprint(next));
     setSelectedChapterId(puzzle.chapterId ?? null);
     const hasWrong = Boolean(puzzle.wrongReplies?.length);
     setWrongEdit(wrongOpen && wrongMode === "first" && hasWrong ? 0 : null);
@@ -646,8 +685,13 @@ export function AdminPuzzleForm() {
     }
 
     setStatus(isUuid(form.id) ? "Úloha uložená." : "Úloha vytvořená.");
-    if (data.puzzle) {
-      setForm((current) => ({ ...current, id: data.puzzle?.id ?? current.id }));
+    const savedId = data.puzzle?.id ?? form.id;
+    const saved = { ...form, id: savedId };
+    setForm(saved);
+    setSavedPrint(formFingerprint(saved));
+    if (wrongMode === "all") {
+      setWrongEdit(null);
+      setWrongHover(null);
     }
     await refresh();
   }
@@ -906,7 +950,9 @@ export function AdminPuzzleForm() {
               }
               onNewPuzzle={(chapterId) => {
                 setSelectedChapterId(chapterId);
-                setForm({ ...emptyForm(), chapterId });
+                const next = { ...emptyForm(), chapterId };
+                setForm(next);
+                setSavedPrint(formFingerprint(next));
                 setWrongEdit(null);
                 setWrongHover(null);
                 setStatus(null);
@@ -1029,7 +1075,12 @@ export function AdminPuzzleForm() {
                 />
                   </div>
                   <div className="mt-2 flex shrink-0 flex-wrap items-center gap-2">
-                    <Button type="submit" className="h-10 px-5 text-sm" disabled={saving}>
+                    <Button
+                      type="submit"
+                      variant={dirty ? "destructive" : "default"}
+                      className="h-10 px-5 text-sm"
+                      disabled={saving}
+                    >
                       {saving ? "Ukládám…" : "Uložit"}
                     </Button>
                     {status ? (
