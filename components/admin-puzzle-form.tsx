@@ -27,12 +27,14 @@ import {
   type AdminWrongMode,
 } from "@/lib/admin-prefs";
 import {
+  buildLine,
   fenAfterUci,
   isValidFen,
   normalizeUci,
   startFenForLine,
   uciToCzechSan,
 } from "@/lib/chess";
+import { EMPTY_SETUP_FEN } from "@/lib/fen-setup";
 import {
   normalizeReplyCode,
   replyCodeForInput,
@@ -43,9 +45,14 @@ import {
   bindPuzzlesToCurriculum,
   childChapters,
   chapterChain,
+  chapterKindOf,
   chapterSideOf,
+  isVykladEditorChapter,
+  newId,
   nextSort,
+  siblingCopyTitle,
   sortChapters,
+  uniqueSlug,
   withMateSubchapters,
   type Curriculum,
 } from "@/lib/curriculum";
@@ -54,6 +61,7 @@ import {
   clonePuzzleMarkup,
   emptyBoardMarkup,
   emptyPuzzleMarkup,
+  isEmptyBoardMarkup,
   recolorGreenDefense,
   type BoardMarkup,
   type Brush,
@@ -70,6 +78,7 @@ function emptyForm() {
     fen: "",
     kind: "move" as PuzzleKind,
     move: "",
+    moves: [] as string[],
     squares: "",
     theme: "",
     level: "",
@@ -93,6 +102,7 @@ function formFingerprint(form: PuzzleForm): string {
     fen: form.fen,
     kind: form.kind,
     move: form.move,
+    moves: form.moves,
     squares: form.squares,
     theme: form.theme,
     level: form.level,
@@ -101,8 +111,25 @@ function formFingerprint(form: PuzzleForm): string {
     explanation: form.explanation,
     videoUrl: form.videoUrl,
     wrongReplies: form.wrongReplies,
-    markup: form.markup,
+    markup: {
+      before: normalizeMarkupFp(form.markup.before),
+      after: normalizeMarkupFp(form.markup.after),
+      ...(form.markup.steps?.some((step) => !isEmptyBoardMarkup(step))
+        ? { steps: form.markup.steps.map(normalizeMarkupFp) }
+        : {}),
+    },
   });
+}
+
+function normalizeMarkupFp(markup: BoardMarkup) {
+  if (isEmptyBoardMarkup(markup)) {
+    return { colors: {}, circles: {}, arrows: [] };
+  }
+  return {
+    colors: markup.colors,
+    circles: markup.circles,
+    arrows: markup.arrows,
+  };
 }
 
 export function AdminPuzzleForm() {
@@ -126,6 +153,9 @@ export function AdminPuzzleForm() {
   const [markupPhase, setMarkupPhase] = useState<MarkupPhase>("before");
   const [stepReset, setStepReset] = useState<AdminStepReset>("keep");
   const [wrongMode, setWrongMode] = useState<AdminWrongMode>("first");
+  const [setupOpen, setSetupOpen] = useState(false);
+  const [marksOpen, setMarksOpen] = useState(false);
+  const [linePly, setLinePly] = useState(0);
   const [historySize, setHistorySize] = useState(0);
   const [undoLabel, setUndoLabel] = useState<string | null>(null);
   const historyRef = useRef<AdminSnapshot<ReturnType<typeof emptyForm>>[]>([]);
@@ -287,6 +317,8 @@ export function AdminPuzzleForm() {
       const blank = emptyForm();
       setForm(blank);
       setSavedPrint(formFingerprint(blank));
+      setLinePly(0);
+      setSetupOpen(false);
     }
     setStatus(`Smazáno ${data.deleted ?? unique.length}. Ctrl+Z vrátí.`);
   }
@@ -381,6 +413,106 @@ export function AdminPuzzleForm() {
     await persistPuzzle(next, next.chapterId ?? null, next.sort ?? 0);
   }
 
+  async function duplicatePuzzle(puzzle: Puzzle) {
+    const parentId = puzzle.chapterId ?? selectedChapterId;
+    const parent = curriculum.chapters.find((item) => item.id === parentId);
+    if (!parent) {
+      setStatus("Stejná úloha potřebuje kapitolu.");
+      return;
+    }
+    const kids = childChapters(
+      curriculum.chapters,
+      parent.id,
+      parent.courseId,
+    );
+    const usedTitles = [
+      ...kids.map((item) => item.title),
+      ...puzzles
+        .filter((item) => item.chapterId === parent.id)
+        .map((item) => item.title),
+    ];
+    const title = siblingCopyTitle(puzzle.title, usedTitles);
+    const after = puzzle.sort ?? 0;
+    const extra = {
+      id: newId(),
+      courseId: parent.courseId,
+      parentId: parent.id,
+      slug: uniqueSlug(
+        title,
+        curriculum.chapters
+          .filter((item) => item.courseId === parent.courseId)
+          .map((item) => item.slug),
+      ),
+      title,
+      sort: after + 1,
+      kind: chapterKindOf(parent),
+      side: parent.side ?? chapterSideOf(curriculum.chapters, parent.id),
+    };
+    const label = `Stejná úloha „${title}“`;
+    commitHistory(label);
+    const nextCurriculum = {
+      ...curriculum,
+      chapters: [
+        ...curriculum.chapters.map((item) =>
+          item.parentId === parent.id && item.sort > after
+            ? { ...item, sort: item.sort + 1 }
+            : item,
+        ),
+        extra,
+      ],
+    };
+    const ok = await persistCurriculum(nextCurriculum);
+    if (!ok) {
+      dropLastHistory(label);
+      return;
+    }
+    const bumped = puzzles.filter(
+      (item) => item.chapterId === parent.id && (item.sort ?? 0) > after,
+    );
+    for (const item of bumped) {
+      await persistPuzzle(item, parent.id, (item.sort ?? 0) + 1);
+    }
+    if (bumped.length) {
+      setPuzzles((current) => {
+        const next = current.map((item) =>
+          item.chapterId === parent.id && (item.sort ?? 0) > after
+            ? { ...item, sort: (item.sort ?? 0) + 1 }
+            : item,
+        );
+        puzzlesRef.current = next;
+        return next;
+      });
+    }
+    const res = await fetch("/api/puzzles", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        ...puzzleToSaveBody(puzzle),
+        id: undefined,
+        title,
+        chapterId: extra.id,
+        sort: 0,
+        allowEmptyMoves: true,
+      }),
+    });
+    const data = (await res.json()) as { error?: string; puzzle?: Puzzle };
+    if (!res.ok || !data.puzzle) {
+      dropLastHistory(label);
+      await persistCurriculum(curriculum);
+      setStatus(data.error ?? "Kopii nešlo uložit.");
+      return;
+    }
+    const created = data.puzzle;
+    setPuzzles((current) => {
+      const next = [...current, created];
+      puzzlesRef.current = next;
+      return next;
+    });
+    setSelectedChapterId(extra.id);
+    loadPuzzle(created);
+    setStatus(`${label}. Ctrl+Z vrátí.`);
+  }
+
   async function persistPuzzle(puzzle: Puzzle, chapterId: string | null, sort: number) {
     await fetch("/api/puzzles", {
       method: "POST",
@@ -439,6 +571,42 @@ export function AdminPuzzleForm() {
     setWrongMode(readAdminWrongMode());
   }, []);
 
+  function applyWrongMode(id: AdminWrongMode) {
+    setWrongMode(id);
+    writeAdminWrongMode(id);
+    if (id === "click") {
+      setWrongEdit(null);
+      setWrongHover(null);
+      return;
+    }
+    if (id === "all") {
+      setWrongOpen(true);
+      setWrongEdit(null);
+      setWrongHover(null);
+      return;
+    }
+    if (id === "first" && form.wrongReplies.length > 0) {
+      setWrongOpen(true);
+      setWrongEdit((current) => (current === null ? 0 : current));
+    }
+  }
+
+  const activeChapter = curriculum.chapters.find(
+    (item) => item.id === (selectedChapterId ?? form.chapterId),
+  );
+  const isVyklad = isVykladEditorChapter(activeChapter, curriculum.chapters);
+
+  useEffect(() => {
+    if (!isVyklad) return;
+    setWrongOpen(false);
+    setWrongEdit(null);
+    setWrongHover(null);
+  }, [isVyklad]);
+
+  useEffect(() => {
+    setLinePly((current) => Math.min(current, form.moves.length));
+  }, [form.moves.length]);
+
   useEffect(() => {
     function onKey(event: KeyboardEvent) {
       const target = event.target as HTMLElement | null;
@@ -449,6 +617,35 @@ export function AdminPuzzleForm() {
         return;
       }
       if (playTarget !== null) return;
+      if (isVyklad) {
+        if (event.key === "ArrowLeft") {
+          event.preventDefault();
+          setLinePly((current) => Math.max(0, current - 1));
+          return;
+        }
+        if (event.key === "ArrowRight") {
+          event.preventDefault();
+          setLinePly((current) => Math.min(form.moves.length, current + 1));
+          return;
+        }
+        return;
+      }
+      if (!event.ctrlKey && !event.metaKey && !event.altKey) {
+        const mode: AdminWrongMode | null =
+          event.key === "1" || event.code === "Digit1" || event.code === "Numpad1"
+            ? "click"
+            : event.key === "2" || event.code === "Digit2" || event.code === "Numpad2"
+              ? "first"
+              : event.key === "3" || event.code === "Digit3" || event.code === "Numpad3"
+                ? "all"
+                : null;
+        if (mode) {
+          event.preventDefault();
+          event.stopImmediatePropagation();
+          applyWrongMode(mode);
+          return;
+        }
+      }
       const count = form.wrongReplies.length;
       const up = event.code === "KeyD" || event.key === "d" || event.key === "D";
       const down = event.code === "KeyF" || event.key === "f" || event.key === "F";
@@ -510,7 +707,15 @@ export function AdminPuzzleForm() {
     }
     window.addEventListener("keydown", onKey, true);
     return () => window.removeEventListener("keydown", onKey, true);
-  }, [form.wrongReplies.length, playTarget, wrongEdit, wrongMode, wrongOpen]);
+  }, [
+    form.moves.length,
+    form.wrongReplies.length,
+    isVyklad,
+    playTarget,
+    wrongEdit,
+    wrongMode,
+    wrongOpen,
+  ]);
 
   useEffect(() => {
     if (wrongEdit === null) return;
@@ -565,6 +770,7 @@ export function AdminPuzzleForm() {
       fen: puzzle.fen,
       kind: puzzleKind(puzzle),
       move: puzzle.moves[0] ?? "",
+      moves: puzzle.moves.map(normalizeUci).filter(Boolean),
       squares: puzzle.squares.join(" "),
       theme: puzzle.theme ?? "",
       level: puzzle.level ?? "",
@@ -588,6 +794,8 @@ export function AdminPuzzleForm() {
     const hasWrong = Boolean(puzzle.wrongReplies?.length);
     setWrongEdit(wrongOpen && wrongMode === "first" && hasWrong ? 0 : null);
     setWrongHover(null);
+    setLinePly(0);
+    setSetupOpen(false);
     setStatus(null);
     if (stepReset === "before") setMarkupPhase("before");
   }
@@ -608,7 +816,36 @@ export function AdminPuzzleForm() {
     });
     setWrongOpen(true);
     setWrongEdit(index);
+    setSetupOpen(false);
     if (markupTool === "piece") setMarkupTool("arrow");
+  }
+
+  function wipeBoardExtras() {
+    setForm((current) => ({
+      ...current,
+      fen: EMPTY_SETUP_FEN,
+      move: "",
+      moves: [],
+      squares: "",
+      explanation: "",
+      wrongReplies: [],
+      markup: emptyPuzzleMarkup(),
+    }));
+    setWrongEdit(null);
+    setWrongHover(null);
+    setLinePly(0);
+  }
+
+  function writeVykladLayer(layer: BoardMarkup) {
+    setForm((current) => {
+      const steps = [...(current.markup.steps ?? [])];
+      while (steps.length <= linePly) steps.push(emptyBoardMarkup());
+      steps[linePly] = cloneBoardMarkup(layer);
+      return {
+        ...current,
+        markup: { ...current.markup, steps },
+      };
+    });
   }
 
   function toggleWrongPanel() {
@@ -619,6 +856,7 @@ export function AdminPuzzleForm() {
       return;
     }
     setWrongOpen(true);
+    setSetupOpen(false);
     if (wrongMode !== "first" || form.wrongReplies.length === 0) {
       return;
     }
@@ -637,9 +875,15 @@ export function AdminPuzzleForm() {
       id: isUuid(form.id) ? form.id : undefined,
       title: form.title.trim(),
       fen: form.fen.trim(),
-      kind: form.kind,
-      moves: form.kind === "move" ? [normalizeUci(form.move)] : [],
-      squares: form.kind === "squares" ? parseSquares(form.squares) : [],
+      kind: isVyklad ? "move" : form.kind,
+      moves:
+        isVyklad || form.kind === "move"
+          ? isVyklad
+            ? form.moves.map(normalizeUci).filter(Boolean)
+            : [normalizeUci(form.move)].filter(Boolean)
+          : [],
+      squares:
+        !isVyklad && form.kind === "squares" ? parseSquares(form.squares) : [],
       theme: form.theme.trim() || undefined,
       level: form.level.trim() || undefined,
       hint: form.hint.trim() || undefined,
@@ -657,6 +901,7 @@ export function AdminPuzzleForm() {
           : reply,
       ),
       markup: form.markup,
+      allowEmptyMoves: isVyklad,
       chapterId: form.chapterId,
       sort:
         form.id && form.chapterId === puzzles.find((item) => item.id === form.id)?.chapterId
@@ -705,7 +950,21 @@ export function AdminPuzzleForm() {
     solutionUci && isValidFen(form.fen)
       ? fenAfterUci(form.fen, solutionUci)
       : null;
-  const startFen = startFenForLine(form.fen, form.move ? [form.move] : []);
+  const startFen = startFenForLine(
+    form.fen,
+    isVyklad ? form.moves : form.move ? [form.move] : [],
+  );
+  const vykladLine = buildLine(
+    form.fen.trim() || EMPTY_SETUP_FEN,
+    form.moves,
+  );
+  const vykladFen =
+    setupOpen || linePly <= 0
+      ? form.fen.trim() || EMPTY_SETUP_FEN
+      : (vykladLine.fens[linePly] ?? form.fen);
+  const vykladLayer =
+    form.markup.steps?.[linePly] ?? emptyBoardMarkup();
+  const vykladLast = vykladLine.lastMoves[linePly];
   const inWrong = wrongEdit !== null;
   const inWrongPanel = wrongOpen || inWrong;
   const selectedReply = inWrong ? form.wrongReplies[wrongEdit] : undefined;
@@ -735,30 +994,91 @@ export function AdminPuzzleForm() {
         : form.fen;
   const markupLayer = (() => {
     if (showingMate) {
-      return withWrongMoveArrow(emptyBoardMarkup(), solutionUci);
+      // Čisté „Po“ — šipku řešení jen přes topArrowUci, ať se neuloží do form.
+      return form.markup.after;
     }
-    if (clickClean) return emptyBoardMarkup();
     if (inWrongPanel && wrongMode === "all" && !previewingWrong) {
-      return withWrongMoveArrows(emptyBoardMarkup(), wrongUcis);
+      const base =
+        markupPhase === "after" ? form.markup.after : form.markup.before;
+      return withWrongMoveArrows(base, wrongUcis);
     }
-    if (boardReply) {
-      return previewingWrong
-        ? withWrongMoveArrow(
-            recolorGreenDefense(boardReply.markup ?? emptyBoardMarkup()),
-            boardReply.answer,
-          )
-        : emptyBoardMarkup();
+    if (boardReply && previewingWrong) {
+      return withWrongMoveArrow(
+        recolorGreenDefense(boardReply.markup ?? emptyBoardMarkup()),
+        boardReply.answer,
+      );
     }
-    if (inWrongPanel) return emptyBoardMarkup();
     return markupPhase === "after" ? form.markup.after : form.markup.before;
   })();
-  const chapterPlace = placementOf(
-    curriculum,
-    selectedChapterId ?? form.chapterId,
-  );
+  useEffect(() => {
+    if (!marksOpen) return;
+    setMarkupTool((tool) => (tool === "piece" ? "arrow" : tool));
+  }, [marksOpen]);
+
+  const editingMarks = marksOpen || setupOpen;
+  const marksLayer =
+    setupOpen || markupPhase === "before" || isVyklad
+      ? isVyklad
+        ? vykladLayer
+        : form.markup.before
+      : form.markup.after;
 
   const toolsBar = (
                   <div className="flex flex-wrap items-center gap-2">
+                    {isVyklad ? (
+                      <>
+                        <button
+                          type="button"
+                          className={`h-8 min-w-8 rounded-md border border-border px-2 font-mono ${
+                            linePly === 0 ? "ring-1 ring-foreground/25" : ""
+                          }`}
+                          title="Výchozí pozice"
+                          onClick={() => setLinePly(0)}
+                        >
+                          0
+                        </button>
+                        {vykladLine.plies.map((ply, index) => (
+                          <button
+                            key={`${ply.uci}-${index}`}
+                            type="button"
+                            className={`h-8 rounded-md border border-border px-2 font-mono ${
+                              linePly === index + 1
+                                ? "ring-1 ring-foreground/25"
+                                : ""
+                            }`}
+                            title={ply.uci}
+                            onClick={() => setLinePly(index + 1)}
+                          >
+                            {uciToCzechSan(vykladLine.fens[index], ply.uci) ||
+                              ply.san}
+                          </button>
+                        ))}
+                        {form.moves.length ? (
+                          <button
+                            type="button"
+                            className="h-8 px-2 text-lg leading-none text-muted-foreground hover:text-foreground"
+                            title="Smazat poslední tah"
+                            onClick={() => {
+                              setForm((current) => {
+                                const moves = current.moves.slice(0, -1);
+                                return {
+                                  ...current,
+                                  moves,
+                                  move: moves[0] ?? "",
+                                };
+                              });
+                              setLinePly((current) => Math.max(0, current - 1));
+                            }}
+                          >
+                            ×
+                          </button>
+                        ) : (
+                          <span className="text-sm text-muted-foreground">
+                            hraj na šachovnici
+                          </span>
+                        )}
+                      </>
+                    ) : (
                     <button
                       type="button"
                       className="h-8 min-w-[4.5rem] rounded-md border border-border px-2 font-mono"
@@ -780,22 +1100,30 @@ export function AdminPuzzleForm() {
                         ? form.squares || "…"
                         : solutionSan || "…"}
                     </button>
+                    )}
                     <RingLetter
-                      active={markupTool === "piece"}
+                      active={setupOpen}
                       title="Upravit pozici"
                       onClick={() => {
-                        if (markupTool === "piece") {
+                        if (setupOpen) {
+                          setSetupOpen(false);
                           setMarkupTool("arrow");
                           return;
                         }
+                        setSetupOpen(true);
                         setMarkupTool("piece");
                         setMarkupPhase("before");
+                        setWrongOpen(false);
                         setWrongEdit(null);
+                        setWrongHover(null);
                         setPlayTarget(null);
+                        setLinePly(0);
                       }}
                     >
                       UP
                     </RingLetter>
+                    {isVyklad ? null : (
+                    <>
                     <span className="inline-flex">
                       <RingLetter
                         active={form.kind === "move"}
@@ -843,6 +1171,8 @@ export function AdminPuzzleForm() {
                         M
                       </RingLetter>
                     </span>
+                    </>
+                    )}
                   </div>
   );
 
@@ -876,27 +1206,7 @@ export function AdminPuzzleForm() {
                             ? "ring-1 ring-foreground/25"
                             : "hover:bg-foreground/5"
                         }`}
-                        onClick={() => {
-                          setWrongMode(id);
-                          writeAdminWrongMode(id);
-                          if (id === "click") {
-                            setWrongEdit(null);
-                            setWrongHover(null);
-                            return;
-                          }
-                          if (id === "all") {
-                            setWrongOpen(true);
-                            setWrongEdit(null);
-                            setWrongHover(null);
-                            return;
-                          }
-                          if (id === "first" && form.wrongReplies.length > 0) {
-                            setWrongOpen(true);
-                            setWrongEdit((current) =>
-                              current === null ? 0 : current,
-                            );
-                          }
-                        }}
+                        onClick={() => applyWrongMode(id)}
                       >
                         {label}
                       </button>
@@ -955,6 +1265,8 @@ export function AdminPuzzleForm() {
                 setSavedPrint(formFingerprint(next));
                 setWrongEdit(null);
                 setWrongHover(null);
+                setLinePly(0);
+                setSetupOpen(false);
                 setStatus(null);
                 if (stepReset === "before") setMarkupPhase("before");
               }}
@@ -962,6 +1274,7 @@ export function AdminPuzzleForm() {
               onDeleteSubtree={(ids, label) => void onDeleteSubtree(ids, label)}
               onDeleteCourse={(id) => void onDeleteCourse(id)}
               onRenamePuzzle={(puzzle, title) => void renamePuzzleTitle(puzzle, title)}
+              onDuplicatePuzzle={(puzzle) => void duplicatePuzzle(puzzle)}
               onUndo={() => void undoLast()}
               canUndo={historySize > 0}
               undoLabel={undoLabel}
@@ -976,12 +1289,25 @@ export function AdminPuzzleForm() {
                   <PositionSetupBoard
                     boardId="admin-preview-setup"
                     className="min-h-0 flex-1"
-                    fen={boardFen}
+                    fen={isVyklad ? vykladFen : boardFen}
+                    positionEdit={setupOpen}
+                    onWipe={wipeBoardExtras}
                     playMode={
-                      inWrong && !selectedReply?.answer && !hoverOther
+                      isVyklad
+                        ? !setupOpen && markupTool !== "piece"
+                        : inWrong && !selectedReply?.answer && !hoverOther
                     }
                     moveLocked={false}
                     onPlayMove={(uci) => {
+                      if (isVyklad) {
+                        setForm((current) => {
+                          const keep = current.moves.slice(0, linePly);
+                          const moves = [...keep, normalizeUci(uci)];
+                          return { ...current, moves, move: moves[0] ?? "" };
+                        });
+                        setLinePly((current) => current + 1);
+                        return;
+                      }
                       if (wrongEdit === null) return;
                       const index = wrongEdit;
                       setForm((current) => {
@@ -994,45 +1320,85 @@ export function AdminPuzzleForm() {
                     }}
                     onChange={(fen) => {
                       if (wrongEdit !== null) return;
-                      if (markupPhase === "after") return;
+                      if (isVyklad && !setupOpen) return;
+                      if (!isVyklad && markupPhase === "after") return;
                       setForm((current) => ({ ...current, fen }));
                     }}
                     selectedSquares={
-                      form.kind === "squares" ? parseSquares(form.squares) : []
+                      form.kind === "squares" && !isVyklad
+                        ? parseSquares(form.squares)
+                        : []
                     }
                     onToggleSquare={
-                      form.kind === "squares" && wrongEdit === null
+                      form.kind === "squares" &&
+                      !isVyklad &&
+                      wrongEdit === null
                         ? toggleSquare
                         : undefined
                     }
-                    markup={markupLayer}
+                    markup={
+                      isVyklad
+                        ? vykladLayer
+                        : editingMarks
+                          ? marksLayer
+                          : markupLayer
+                    }
                     topArrowUci={
-                      showingMate
-                        ? solutionUci
-                        : clickClean
-                          ? ""
-                          : previewingWrong && boardReply?.answer
-                            ? boardReply.answer
-                            : inWrongPanel
-                              ? ""
-                              : solutionUci
+                      editingMarks
+                        ? ""
+                        : showingMate
+                          ? solutionUci
+                          : clickClean
+                            ? ""
+                            : isVyklad
+                              ? (vykladLine.plies[linePly - 1]?.uci ?? "")
+                              : previewingWrong && boardReply?.answer
+                                ? boardReply.answer
+                                : inWrongPanel
+                                  ? ""
+                                  : solutionUci
                     }
                     lastMoveSquares={
-                      showingMate && solutionUci.length >= 4
-                        ? [
-                            solutionUci.slice(0, 2),
-                            solutionUci.slice(2, 4),
-                          ].filter((square) => square.length === 2)
-                        : []
+                      isVyklad
+                        ? vykladLast
+                          ? [vykladLast.from, vykladLast.to]
+                          : []
+                        : showingMate && solutionUci.length >= 4
+                          ? [
+                              solutionUci.slice(0, 2),
+                              solutionUci.slice(2, 4),
+                            ].filter((square) => square.length === 2)
+                          : []
                     }
                     onMarkupChange={
-                      (inWrong && !selectedReply?.answer) ||
-                      hoverOther ||
-                      (wrongMode === "all" && wrongEdit === null)
-                        ? undefined
-                        : (layer) =>
-                            setForm((current) => {
-                              if (wrongEdit !== null) {
+                      editingMarks || isVyklad || !(
+                        (inWrong && !selectedReply?.answer) ||
+                        hoverOther ||
+                        (inWrongPanel &&
+                          wrongMode === "all" &&
+                          wrongEdit === null)
+                      )
+                        ? (layer) => {
+                            if (isVyklad) {
+                              writeVykladLayer(layer);
+                              return;
+                            }
+                            const cleanAfter =
+                              markupPhase === "after" && solutionUci
+                                ? stripMoveArrow(layer, solutionUci)
+                                : layer;
+                            if (setupOpen || markupPhase === "before") {
+                              setForm((current) => ({
+                                ...current,
+                                markup: {
+                                  ...current.markup,
+                                  before: layer,
+                                },
+                              }));
+                              return;
+                            }
+                            if (wrongEdit !== null) {
+                              setForm((current) => {
                                 const next = [...current.wrongReplies];
                                 const row = next[wrongEdit];
                                 if (!row) return current;
@@ -1043,15 +1409,19 @@ export function AdminPuzzleForm() {
                                   ),
                                 };
                                 return { ...current, wrongReplies: next };
-                              }
-                              return {
-                                ...current,
-                                markup: {
-                                  ...current.markup,
-                                  [markupPhase]: layer,
-                                },
-                              };
-                            })
+                              });
+                              return;
+                            }
+                            setForm((current) => ({
+                              ...current,
+                              markup: {
+                                ...current.markup,
+                                [markupPhase]:
+                                  markupPhase === "after" ? cleanAfter : layer,
+                              },
+                            }));
+                          }
+                        : undefined
                     }
                     tool={markupTool}
                     brush={inWrong && markupBrush === "green" ? "red" : markupBrush}
@@ -1089,7 +1459,7 @@ export function AdminPuzzleForm() {
                       </span>
                     ) : null}
                   </div>
-                  {wrongOpen ? (
+                  {wrongOpen && !isVyklad ? (
                   <div className="mt-2 flex min-h-0 flex-1 flex-col">
                     <div className="flex shrink-0 items-center gap-1">
                     <button
@@ -1250,21 +1620,34 @@ export function AdminPuzzleForm() {
                     </div>
                   </div>
                   ) : null}
-                  <div className={wrongOpen ? "max-h-[42%] shrink-0 overflow-y-auto border-t border-border pt-1 text-base" : "mt-2 flex min-h-0 flex-1 flex-col overflow-y-auto text-base"}>
-                  <details className="shrink-0 border-t border-border pt-1">
+                  <div className={wrongOpen && !isVyklad ? "max-h-[42%] shrink-0 overflow-y-auto border-t border-border pt-1 text-base" : "mt-2 flex min-h-0 flex-1 flex-col overflow-y-auto text-base"}>
+                  <details
+                    key={isVyklad ? "v-marks" : setupOpen ? "up-marks" : "c-marks"}
+                    className="shrink-0 border-t border-border pt-1"
+                    open={isVyklad || setupOpen || marksOpen ? true : undefined}
+                    onToggle={(event) => {
+                      setMarksOpen(
+                        (event.currentTarget as HTMLDetailsElement).open,
+                      );
+                    }}
+                  >
                     <summary className="cursor-pointer select-none px-1 py-1 text-muted-foreground hover:text-foreground">
                       Značky
                     </summary>
                     <div className="px-0.5 pb-2">
                 <MarkupPalette
-                  markup={form.markup}
-                  layer={markupLayer}
-                  phase={markupPhase}
+                  markup={
+                    isVyklad
+                      ? { ...form.markup, before: vykladLayer }
+                      : form.markup
+                  }
+                  layer={marksLayer}
+                  phase={isVyklad || setupOpen ? "before" : markupPhase}
                   tool={markupTool}
                     brush={inWrong && markupBrush === "green" ? "red" : markupBrush}
                   kind={form.kind}
                   canAfter={Boolean(afterFen)}
-                  hidePhase={wrongEdit !== null}
+                  hidePhase={isVyklad || setupOpen || wrongEdit !== null}
                   onPhase={(phase) => {
                     setMarkupPhase(phase);
                     if (phase === "after") {
@@ -1280,6 +1663,20 @@ export function AdminPuzzleForm() {
                     )
                   }
                   onChange={(markup) => {
+                    if (isVyklad) {
+                      writeVykladLayer(markup.before);
+                      return;
+                    }
+                    if (setupOpen) {
+                      setForm((current) => ({
+                        ...current,
+                        markup: {
+                          ...current.markup,
+                          before: cloneBoardMarkup(markup.before),
+                        },
+                      }));
+                      return;
+                    }
                     if (wrongEdit !== null) {
                       if (!selectedReply?.answer || hoverOther) return;
                       const layer = cloneBoardMarkup(markup[markupPhase]);
@@ -1302,7 +1699,11 @@ export function AdminPuzzleForm() {
                 />
                     </div>
                   </details>
-                  <details className="shrink-0 border-t border-border pt-1">
+                  <details
+                    key={isVyklad ? "v-explain" : "c-explain"}
+                    className="shrink-0 border-t border-border pt-1"
+                    open={isVyklad ? true : undefined}
+                  >
                     <summary className="cursor-pointer select-none px-1 py-1 text-muted-foreground hover:text-foreground">
                       Vysvětlení{form.explanation.trim() ? " (A)" : ""}
                     </summary>
@@ -1311,7 +1712,7 @@ export function AdminPuzzleForm() {
                     id="explanation"
                     rows={5}
                     className="min-h-[6rem] resize-y px-2 py-1.5"
-                    placeholder="Po správném tahu…"
+                    placeholder={isVyklad ? "K tomuto tahu…" : "Po správném tahu…"}
                     value={form.explanation}
                     onChange={(e) =>
                       setForm({ ...form, explanation: e.target.value })
@@ -1319,7 +1720,7 @@ export function AdminPuzzleForm() {
                   />
                     </div>
                   </details>
-                  {!wrongOpen ? (
+                  {!wrongOpen && !isVyklad ? (
                   <div className="shrink-0 border-t border-border pt-1">
                     <div className="flex shrink-0 items-center gap-1">
                     <button
@@ -1417,7 +1818,11 @@ export function AdminPuzzleForm() {
         instanceKey="solution"
         onClose={() => setPlayTarget(null)}
         onPick={(uci) => {
-          setForm((current) => ({ ...current, move: uci }));
+          setForm((current) => ({
+            ...current,
+            move: uci,
+            moves: [uci],
+          }));
         }}
       />
     </div>

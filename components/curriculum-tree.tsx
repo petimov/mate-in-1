@@ -25,6 +25,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
   childChapters,
+  chapterChain,
   newId,
   nextSort,
   uniqueSlug,
@@ -37,6 +38,9 @@ import {
   chapterSideOf,
   chapterSideLabel,
   chapterSideShort,
+  siblingCopyTitle,
+  childCopyTitle,
+  titleEndsWithSNumber,
   type Chapter,
   type Curriculum,
 } from "@/lib/curriculum";
@@ -60,6 +64,7 @@ type CurriculumTreeProps = {
   onDeleteSubtree: (chapterIds: string[], label: string) => void;
   onDeleteCourse: (id: string) => void;
   onRenamePuzzle: (puzzle: Puzzle, title: string) => void;
+  onDuplicatePuzzle: (puzzle: Puzzle) => void;
   onUndo: () => void;
   canUndo: boolean;
   undoLabel: string | null;
@@ -81,6 +86,7 @@ export function CurriculumTree({
   onDeleteSubtree,
   onDeleteCourse,
   onRenamePuzzle,
+  onDuplicatePuzzle,
   onUndo,
   canUndo,
   undoLabel,
@@ -99,16 +105,18 @@ export function CurriculumTree({
   useEffect(() => {
     const ids = curriculum.chapters.map((item) => item.id);
     if (!ids.length) return;
+    const openAtDepth = (id: string) =>
+      chapterChain(curriculum.chapters, id).length <= 2;
     setOpen((current) => {
       if (!openInit.current) {
         openInit.current = true;
-        return Object.fromEntries(ids.map((id) => [id, true]));
+        return Object.fromEntries(ids.map((id) => [id, openAtDepth(id)]));
       }
       const next = { ...current };
       let changed = false;
       for (const id of ids) {
         if (!(id in next)) {
-          next[id] = true;
+          next[id] = openAtDepth(id);
           changed = true;
         }
       }
@@ -209,6 +217,85 @@ export function CurriculumTree({
       ...(parentId ? { [parentId]: true } : {}),
     }));
     onSelectChapter(id);
+  }
+
+  function usedSlugs() {
+    return curriculum.chapters
+      .filter((item) => item.courseId === course?.id)
+      .map((item) => item.slug);
+  }
+
+  function usedTitles(parentId: string | null) {
+    return childChapters(curriculum.chapters, parentId, course?.id).map(
+      (item) => item.title,
+    );
+  }
+
+  function revealNewChapter(id: string, parentId: string | null) {
+    setOpen((current) => ({
+      ...current,
+      [id]: true,
+      ...(parentId ? { [parentId]: true } : {}),
+    }));
+    onSelectChapter(id);
+  }
+
+  function addSiblingOf(chapter: Chapter) {
+    if (!course) return;
+    const siblings = childChapters(
+      curriculum.chapters,
+      chapter.parentId,
+      course.id,
+    );
+    const title = siblingCopyTitle(chapter.title, usedTitles(chapter.parentId));
+    const extra: Chapter = {
+      id: newId(),
+      courseId: course.id,
+      parentId: chapter.parentId,
+      slug: uniqueSlug(title, usedSlugs()),
+      title,
+      sort: 0,
+      kind: chapterKindOf(chapter),
+      side: chapter.side ?? chapterSideOf(curriculum.chapters, chapter.id),
+    };
+    const index = siblings.findIndex((item) => item.id === chapter.id);
+    const ordered = [
+      ...siblings.slice(0, index + 1),
+      extra,
+      ...siblings.slice(index + 1),
+    ];
+    const sortOf = new Map(ordered.map((item, i) => [item.id, i]));
+    extra.sort = sortOf.get(extra.id) ?? index + 1;
+    setChapters(
+      [
+        ...curriculum.chapters.map((item) =>
+          sortOf.has(item.id) ? { ...item, sort: sortOf.get(item.id)! } : item,
+        ),
+        extra,
+      ],
+      `Nová kapitola „${title}“`,
+    );
+    revealNewChapter(extra.id, extra.parentId);
+    onNewPuzzle(extra.id);
+  }
+
+  function addChildOf(parent: Chapter) {
+    if (!course) return;
+    const kids = childChapters(curriculum.chapters, parent.id, course.id);
+    const title = childCopyTitle(parent.title, usedTitles(parent.id));
+    const extra: Chapter = {
+      id: newId(),
+      courseId: course.id,
+      parentId: parent.id,
+      slug: uniqueSlug(title, usedSlugs()),
+      title,
+      sort: nextSort(kids),
+      kind: chapterKindOf(parent),
+      side: parent.side ?? chapterSideOf(curriculum.chapters, parent.id),
+    };
+    setChapters([...curriculum.chapters, extra], `Nová podkapitola „${title}“`);
+    revealNewChapter(extra.id, parent.id);
+    onNewPuzzle(extra.id);
   }
 
   function renameChapter(chapter: Chapter) {
@@ -424,6 +511,36 @@ export function CurriculumTree({
     if (next) revealPuzzle(next);
   }
 
+  function stepSNumberSiblings(dir: -1 | 1): boolean {
+    const chapterId = selectedPuzzleId
+      ? puzzles.find((item) => item.id === selectedPuzzleId)?.chapterId
+      : selectedChapterId;
+    const chapter = curriculum.chapters.find((item) => item.id === chapterId);
+    if (!chapter || !titleEndsWithSNumber(chapter.title)) return false;
+    const siblings = childChapters(
+      curriculum.chapters,
+      chapter.parentId,
+      chapter.courseId,
+    );
+    const index = siblings.findIndex((item) => item.id === chapter.id);
+    const next = siblings[index + dir];
+    if (!next) return false;
+    const first = puzzlesInChapter(
+      puzzles,
+      next.id,
+      false,
+      curriculum.chapters,
+    )[0];
+    if (first) {
+      revealPuzzle(first);
+      return true;
+    }
+    openAncestors(next.id);
+    onSelectChapter(next.id);
+    onNewPuzzle(next.id);
+    return true;
+  }
+
   useEffect(() => {
     function onKey(event: KeyboardEvent) {
       const target = event.target as HTMLElement | null;
@@ -450,6 +567,7 @@ export function CurriculumTree({
         if (puzzle) movePuzzleDir(puzzle, dir);
         return;
       }
+      if (stepSNumberSiblings(dir)) return;
       stepPuzzle(selectedPuzzleId, dir);
     }
     window.addEventListener("keydown", onKey);
@@ -652,7 +770,8 @@ export function CurriculumTree({
             onRename={renameChapter}
             onDelete={deleteChapter}
             onMove={moveChapter}
-            onAddSub={addChapter}
+            onAddSibling={addSiblingOf}
+            onAddChild={addChildOf}
             onCycleKind={cycleKind}
             onCycleSide={cycleSide}
             onDropChapter={onDropChapter}
@@ -665,6 +784,7 @@ export function CurriculumTree({
             setDropChapterId={setDropChapterId}
             onNewPuzzle={onNewPuzzle}
             onRenamePuzzle={renamePuzzle}
+            onDuplicatePuzzle={onDuplicatePuzzle}
             onDeletePuzzle={(puzzle) => {
               if (!window.confirm(`Smazat „${puzzle.title}“? Ctrl+Z vrátí.`)) return;
               onDeletePuzzles([puzzle.id]);
@@ -695,7 +815,8 @@ function ChapterNode({
   onRename,
   onDelete,
   onMove,
-  onAddSub,
+  onAddSibling,
+  onAddChild,
   onCycleKind,
   onCycleSide,
   onDropChapter,
@@ -708,6 +829,7 @@ function ChapterNode({
   setDropChapterId,
   onNewPuzzle,
   onRenamePuzzle,
+  onDuplicatePuzzle,
   onDeletePuzzle,
   depth,
 }: {
@@ -728,7 +850,8 @@ function ChapterNode({
   onRename: (chapter: Chapter) => void;
   onDelete: (chapter: Chapter) => void;
   onMove: (chapter: Chapter, dir: -1 | 1) => void;
-  onAddSub: (parentId: string) => void;
+  onAddSibling: (chapter: Chapter) => void;
+  onAddChild: (chapter: Chapter) => void;
   onCycleKind: (chapter: Chapter) => void;
   onCycleSide: (chapter: Chapter) => void;
   onDropChapter: (event: DragEvent, chapterId: string | null) => void;
@@ -741,6 +864,7 @@ function ChapterNode({
   setDropChapterId: (id: string | null) => void;
   onNewPuzzle: (chapterId: string) => void;
   onRenamePuzzle: (puzzle: Puzzle) => void;
+  onDuplicatePuzzle: (puzzle: Puzzle) => void;
   onDeletePuzzle: (puzzle: Puzzle) => void;
   depth: number;
 }) {
@@ -752,7 +876,10 @@ function ChapterNode({
   const branchAll = branch.length > 0 && branchSelected === branch.length;
   const branchSome = branchSelected > 0 && !branchAll;
   const expanded = open[chapter.id] === true;
-
+  const isVyklad = chapterKindOf(chapter) === "vyklad";
+  // Folder with puzzle leaves (např. „Maty dámou výklad“) → no +.
+  // Pluses live on those leaves / on chapter-only nodes.
+  const showVykladChapterPluses = isVyklad && items.length === 0;
   return (
     <div
       className="mb-0"
@@ -789,19 +916,28 @@ function ChapterNode({
             indeterminate={branchSome}
             onToggle={() => onToggleChapterPuzzles(chapter.id)}
           />
-          <button
-            type="button"
-            className="shrink-0 text-muted-foreground"
-            onClick={() =>
-              setOpen((current) => ({ ...current, [chapter.id]: !expanded }))
-            }
-          >
-            {expanded ? (
-              <ChevronDown className="size-3" />
-            ) : (
-              <ChevronRight className="size-3" />
-            )}
-          </button>
+          {kids.length > 0 || items.length > 0 ? (
+            <button
+              type="button"
+              className="shrink-0 text-muted-foreground"
+              onClick={() =>
+                setOpen((current) => ({ ...current, [chapter.id]: !expanded }))
+              }
+            >
+              {expanded ? (
+                <ChevronDown className="size-3" />
+              ) : (
+                <ChevronRight className="size-3" />
+              )}
+            </button>
+          ) : (
+            <span
+              className="inline-flex size-3 shrink-0 items-center justify-center text-[10px] leading-none text-muted-foreground"
+              aria-hidden
+            >
+              •
+            </span>
+          )}
           {renameId === chapter.id ? (
             <Input
               value={renameValue}
@@ -821,20 +957,36 @@ function ChapterNode({
               onClick={() => onSelectChapter(chapter.id)}
             >
               {chapter.title}
-              <span className="ml-2 text-[12px] text-muted-foreground">
-                {kids.length + items.length}
-              </span>
+              {kids.length + items.length > 0 ? (
+                <span className="ml-2 text-[12px] text-muted-foreground">
+                  {kids.length + items.length}
+                </span>
+              ) : null}
             </button>
           )}
         </div>
         <div className="flex shrink-0 items-center gap-0.5">
+          {showVykladChapterPluses ? (
+            <IconBtn
+              title="Podkapitola · stejné o úroveň níž"
+              onClick={() => onAddChild(chapter)}
+            >
+              <Plus className="size-3" />
+            </IconBtn>
+          ) : !isVyklad && selectedChapterId === chapter.id ? (
+            <IconBtn title="Nová úloha" onClick={() => onNewPuzzle(chapter.id)}>
+              <Plus className="size-3" />
+            </IconBtn>
+          ) : !isVyklad ? (
+            <span className="inline-block w-5 shrink-0" aria-hidden />
+          ) : null}
           <button
             type="button"
-            title={chapterKindOf(chapter) === "cviceni" ? "Cvičení" : "Výklad"}
+            title={isVyklad ? "Výklad" : "Cvičení"}
             className="w-5 shrink-0 rounded text-center text-[12px] font-semibold uppercase text-muted-foreground hover:bg-foreground/10 hover:text-foreground"
             onClick={() => onCycleKind(chapter)}
           >
-            {chapterKindOf(chapter) === "cviceni" ? "C" : "V"}
+            {isVyklad ? "V" : "C"}
           </button>
           <button
             type="button"
@@ -844,17 +996,6 @@ function ChapterNode({
           >
             {chapterSideShort(chapter.side ?? chapterSideOf(chapters, chapter.id))}
           </button>
-          {selectedChapterId === chapter.id ? (
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="h-6 px-1 text-[12px]"
-                onClick={() => onNewPuzzle(chapter.id)}
-              >
-                +
-              </Button>
-          ) : null}
           <div
             className={cn(
               "items-center",
@@ -878,10 +1019,19 @@ function ChapterNode({
           >
             <Pencil className="size-3" />
           </IconBtn>
-          <IconBtn title="Podkapitola" onClick={() => onAddSub(chapter.id)}>
-            <Plus className="size-3" />
-          </IconBtn>
-          <IconBtn title="Smazat" onClick={() => onDelete(chapter)}>
+          {showVykladChapterPluses ? (
+            <IconBtn
+              title="Stejná úroveň · hned za"
+              onClick={() => onAddSibling(chapter)}
+            >
+              <Plus className="size-3" />
+            </IconBtn>
+          ) : null}
+          <IconBtn
+            title="Smazat"
+            className="ml-1.5"
+            onClick={() => onDelete(chapter)}
+          >
             <Trash2 className="size-3" />
           </IconBtn>
           </div>
@@ -889,10 +1039,26 @@ function ChapterNode({
       </div>
       {expanded ? (
         <div>
-          {kids.map((child) => (
+          {[
+            ...kids.map((child) => ({
+              type: "chapter" as const,
+              id: child.id,
+              sort: child.sort,
+              child,
+            })),
+            ...items.map((puzzle) => ({
+              type: "puzzle" as const,
+              id: puzzle.id,
+              sort: puzzle.sort ?? 0,
+              puzzle,
+            })),
+          ]
+            .sort((a, b) => a.sort - b.sort || (a.type === "chapter" ? -1 : 1))
+            .map((row) =>
+              row.type === "chapter" ? (
             <ChapterNode
-              key={child.id}
-              chapter={child}
+              key={row.child.id}
+              chapter={row.child}
               chapters={chapters}
               puzzles={puzzles}
               selectedChapterId={selectedChapterId}
@@ -909,7 +1075,8 @@ function ChapterNode({
               onRename={onRename}
               onDelete={onDelete}
               onMove={onMove}
-              onAddSub={onAddSub}
+              onAddSibling={onAddSibling}
+              onAddChild={onAddChild}
               onCycleKind={onCycleKind}
               onCycleSide={onCycleSide}
               onDropChapter={onDropChapter}
@@ -922,36 +1089,38 @@ function ChapterNode({
               setDropChapterId={setDropChapterId}
               onNewPuzzle={onNewPuzzle}
               onRenamePuzzle={onRenamePuzzle}
+              onDuplicatePuzzle={onDuplicatePuzzle}
               onDeletePuzzle={onDeletePuzzle}
               depth={depth + 1}
             />
-          ))}
-          {selectedChapterId === chapter.id
-            ? items.map((puzzle) => (
+              ) : (
             <PuzzleRow
-              key={puzzle.id}
-              puzzle={puzzle}
-              active={puzzle.id === selectedPuzzleId}
-              checked={selectedSet.has(puzzle.id)}
-              renaming={renameId === puzzle.id}
+              key={row.puzzle.id}
+              puzzle={row.puzzle}
+              active={row.puzzle.id === selectedPuzzleId}
+              checked={selectedSet.has(row.puzzle.id)}
+              renaming={renameId === row.puzzle.id}
               renameValue={renameValue}
               onSelect={onSelectPuzzle}
-              onToggle={() => onTogglePuzzle(puzzle.id)}
+              onToggle={() => onTogglePuzzle(row.puzzle.id)}
               onDropBefore={onDropBefore}
               onMoveDir={onMovePuzzleDir}
-              onStep={(dir) => onStepPuzzle(puzzle.id, dir)}
+              onStep={(dir) => onStepPuzzle(row.puzzle.id, dir)}
               onStartRename={() => {
-                setRenameId(puzzle.id);
-                setRenameValue(puzzle.title);
+                setRenameId(row.puzzle.id);
+                setRenameValue(row.puzzle.title);
               }}
-              onRename={() => onRenamePuzzle(puzzle)}
+              onRename={() => onRenamePuzzle(row.puzzle)}
               onCancelRename={() => setRenameId(null)}
               onRenameValue={setRenameValue}
-              onDelete={() => onDeletePuzzle(puzzle)}
+              onAddChild={() => onAddChild(chapter)}
+              onDuplicate={() => onDuplicatePuzzle(row.puzzle)}
+              onDelete={() => onDeletePuzzle(row.puzzle)}
+              showCopy={isVyklad}
               depth={depth + 1}
             />
-          ))
-            : null}
+              ),
+            )}
         </div>
       ) : null}
     </div>
@@ -973,7 +1142,10 @@ function PuzzleRow({
   onRename,
   onCancelRename,
   onRenameValue,
+  onAddChild,
+  onDuplicate,
   onDelete,
+  showCopy,
   depth,
 }: {
   puzzle: Puzzle;
@@ -990,7 +1162,10 @@ function PuzzleRow({
   onRename: () => void;
   onCancelRename: () => void;
   onRenameValue: (value: string) => void;
+  onAddChild?: () => void;
+  onDuplicate: () => void;
   onDelete: () => void;
+  showCopy?: boolean;
   depth: number;
 }) {
   return (
@@ -1028,7 +1203,16 @@ function PuzzleRow({
           checked={checked}
           onToggle={onToggle}
         />
-        <GripVertical className="size-3 shrink-0 text-muted-foreground" />
+        {showCopy ? (
+          <span
+            className="inline-flex size-3 shrink-0 items-center justify-center text-[10px] leading-none text-muted-foreground"
+            aria-hidden
+          >
+            •
+          </span>
+        ) : (
+          <GripVertical className="size-3 shrink-0 text-muted-foreground" />
+        )}
         {renaming ? (
           <Input
             value={renameValue}
@@ -1052,9 +1236,18 @@ function PuzzleRow({
         )}
       </div>
       <div className="flex shrink-0 items-center gap-0.5">
-        <span className="w-5 text-center text-[12px] uppercase text-muted-foreground">
-          {puzzleKind(puzzle) === "squares" ? "P" : "T"}
-        </span>
+        {showCopy ? (
+          <IconBtn
+            title="Podkapitola · stejné o úroveň níž"
+            onClick={() => onAddChild?.()}
+          >
+            <Plus className="size-3" />
+          </IconBtn>
+        ) : (
+          <span className="w-5 text-center text-[12px] uppercase text-muted-foreground">
+            {puzzleKind(puzzle) === "squares" ? "P" : "T"}
+          </span>
+        )}
         <div
           className={cn(
             "items-center",
@@ -1082,7 +1275,12 @@ function PuzzleRow({
         <IconBtn title="Přejmenovat" onClick={onStartRename}>
           <Pencil className="size-3" />
         </IconBtn>
-        <IconBtn title="Smazat" onClick={onDelete}>
+        {showCopy ? (
+          <IconBtn title="Stejná úloha" onClick={() => onDuplicate()}>
+            <Plus className="size-3" />
+          </IconBtn>
+        ) : null}
+        <IconBtn title="Smazat" className="ml-1.5" onClick={onDelete}>
           <Trash2 className="size-3" />
         </IconBtn>
         </div>
@@ -1120,17 +1318,22 @@ function TreeCheck({
 function IconBtn({
   title,
   onClick,
+  className,
   children,
 }: {
   title: string;
   onClick: (event: MouseEvent<HTMLButtonElement>) => void;
+  className?: string;
   children: ReactNode;
 }) {
   return (
     <button
       type="button"
       title={title}
-      className="rounded p-0.5 text-muted-foreground hover:bg-foreground/10 hover:text-foreground"
+      className={cn(
+        "rounded p-0.5 text-muted-foreground hover:bg-foreground/10 hover:text-foreground",
+        className,
+      )}
       onClick={onClick}
     >
       {children}

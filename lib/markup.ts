@@ -46,6 +46,7 @@ export type BoardMarkup = {
 export type PuzzleMarkup = {
   before: BoardMarkup;
   after: BoardMarkup;
+  steps?: BoardMarkup[];
 };
 
 export type MarkupTool = "color" | "circle" | "arrow";
@@ -184,6 +185,9 @@ export function clonePuzzleMarkup(markup?: PuzzleMarkup | null): PuzzleMarkup {
   return {
     before: cloneBoardMarkup(markup?.before),
     after: cloneBoardMarkup(markup?.after),
+    ...(markup?.steps
+      ? { steps: markup.steps.map((step) => cloneBoardMarkup(step)) }
+      : {}),
   };
 }
 
@@ -198,13 +202,24 @@ export function isEmptyBoardMarkup(markup?: BoardMarkup | null): boolean {
 
 export function isEmptyPuzzleMarkup(markup?: PuzzleMarkup | null): boolean {
   if (!markup) return true;
-  return isEmptyBoardMarkup(markup.before) && isEmptyBoardMarkup(markup.after);
+  const stepsEmpty =
+    !markup.steps || markup.steps.every((step) => isEmptyBoardMarkup(step));
+  return (
+    isEmptyBoardMarkup(markup.before) &&
+    isEmptyBoardMarkup(markup.after) &&
+    stepsEmpty
+  );
 }
 
 export function visibleMarkup(
   markup: PuzzleMarkup | undefined,
   atEnd: boolean,
+  ply?: number,
 ): BoardMarkup {
+  if (typeof ply === "number" && markup?.steps && markup.steps.length > 0) {
+    const index = Math.min(Math.max(0, ply), markup.steps.length - 1);
+    return markup.steps[index] ?? EMPTY_BOARD_MARKUP;
+  }
   const layer = atEnd ? markup?.after : markup?.before;
   return layer ?? EMPTY_BOARD_MARKUP;
 }
@@ -371,10 +386,14 @@ export function parsePuzzleMarkup(raw: unknown): PuzzleMarkup {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
     return emptyPuzzleMarkup();
   }
-  const row = raw as { before?: unknown; after?: unknown };
+  const row = raw as { before?: unknown; after?: unknown; steps?: unknown };
+  const steps = Array.isArray(row.steps)
+    ? row.steps.map((step) => parseBoardMarkup(step))
+    : undefined;
   return {
     before: parseBoardMarkup(row.before),
     after: parseBoardMarkup(row.after),
+    ...(steps && steps.length > 0 ? { steps } : {}),
   };
 }
 
@@ -393,6 +412,9 @@ export function serializePuzzleMarkup(markup?: PuzzleMarkup | null) {
   const after = serializeBoardMarkup(markup.after);
   if (Object.keys(before).length > 0) out.before = before;
   if (Object.keys(after).length > 0) out.after = after;
+  if (markup.steps?.some((step) => !isEmptyBoardMarkup(step))) {
+    out.steps = markup.steps.map((step) => serializeBoardMarkup(step));
+  }
   return out;
 }
 

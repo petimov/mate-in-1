@@ -347,9 +347,10 @@ export function validatePuzzleInput(input: PuzzleInput): string | null {
     return null;
   }
   if (moves.length === 0) {
+    if (input.allowEmptyMoves) return null;
     return "Úloha na tah potřebuje zahrát řešení.";
   }
-  if (!/^[a-h][1-8][a-h][1-8][qrbn]?$/.test(moves[0])) {
+  if (moves.some((move) => !/^[a-h][1-8][a-h][1-8][qrbn]?$/.test(move))) {
     return "Neplatné řešení. Zahraj tah na šachovnici.";
   }
   return null;

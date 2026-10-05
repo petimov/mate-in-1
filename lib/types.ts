@@ -43,6 +43,7 @@ export interface PuzzleInput {
   markup?: PuzzleMarkup;
   chapterId?: string | null;
   sort?: number;
+  allowEmptyMoves?: boolean;
 }
 
 export interface PuzzleRow {

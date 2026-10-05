@@ -268,8 +268,8 @@ export function PuzzleTrainer({
     if (wrongHit?.markup && !isEmptyBoardMarkup(wrongHit.markup)) {
       return recolorGreenDefense(wrongHit.markup);
     }
-    return prefs.showMarkup ? visibleMarkup(puzzle?.markup, atEnd) : undefined;
-  }, [atEnd, prefs.showMarkup, puzzle, wrongHit]);
+    return prefs.showMarkup ? visibleMarkup(puzzle?.markup, atEnd, ply) : undefined;
+  }, [atEnd, ply, prefs.showMarkup, puzzle, wrongHit]);
 
   const goToPuzzle = useCallback((nextIndex: number) => {
     setWrongHit(null);

@@ -33,7 +33,10 @@ export async function POST(request: Request) {
     );
   }
 
-  const body = (await request.json()) as Partial<Puzzle> & { id?: string };
+  const body = (await request.json()) as Partial<Puzzle> & {
+    id?: string;
+    allowEmptyMoves?: boolean;
+  };
   const kind: PuzzleKind = body.kind === "squares" ? "squares" : "move";
   const input = {
     title: body.title?.trim() ?? "",
@@ -51,6 +54,7 @@ export async function POST(request: Request) {
     markup: body.markup,
     chapterId: body.chapterId ?? null,
     sort: typeof body.sort === "number" ? body.sort : 0,
+    allowEmptyMoves: Boolean(body.allowEmptyMoves),
   };
   const invalid = validatePuzzleInput(input);
   if (invalid) {

@@ -340,6 +340,52 @@ export function nextSort(items: { sort?: number }[]): number {
   return Math.max(...items.map((item) => item.sort ?? 0)) + 1;
 }
 
+const TRAILING_NUM = /(\d+)\s*$/;
+
+export function incrementTrailingNumber(title: string): string {
+  const match = title.match(TRAILING_NUM);
+  if (!match || match.index === undefined) return title;
+  return `${title.slice(0, match.index)}${Number(match[1]) + 1}`;
+}
+
+export function titleEndsWithNumber(title: string): boolean {
+  return TRAILING_NUM.test(title);
+}
+
+export function titleEndsWithSNumber(title: string): boolean {
+  return /S\d+\s*$/.test(title);
+}
+
+export function uniqueCopyTitle(title: string, used: string[]): string {
+  const taken = new Set(used);
+  if (!taken.has(title)) return title;
+  let next = TRAILING_NUM.test(title)
+    ? incrementTrailingNumber(title)
+    : `${title.trimEnd()} 2`;
+  while (taken.has(next)) {
+    const inc = incrementTrailingNumber(next);
+    next = inc === next ? `${next} 2` : inc;
+  }
+  return next;
+}
+
+export function siblingCopyTitle(source: string, used: string[]): string {
+  const next = TRAILING_NUM.test(source)
+    ? incrementTrailingNumber(source)
+    : source;
+  return uniqueCopyTitle(next, used);
+}
+
+export function childCopyTitle(parent: string, used: string[]): string {
+  if (/P\d+\s*$/.test(parent) && !/S\d+\s*$/.test(parent)) {
+    return uniqueCopyTitle(`${parent.trimEnd()} S1`, used);
+  }
+  if (TRAILING_NUM.test(parent)) {
+    return uniqueCopyTitle(incrementTrailingNumber(parent), used);
+  }
+  return uniqueCopyTitle(`${parent.trimEnd()} P1`, used);
+}
+
 export function parseCurriculum(raw: unknown): Curriculum | null {
   if (!raw || typeof raw !== "object") return null;
   const row = raw as { courses?: unknown; chapters?: unknown };
@@ -388,6 +434,23 @@ export function chapterKindOf(
   chapter?: Pick<Chapter, "kind"> | null,
 ): ChapterKind {
   return chapter?.kind === "cviceni" ? "cviceni" : "vyklad";
+}
+
+export function isVykladEditorChapter(
+  chapter?: Pick<Chapter, "kind" | "id"> | null,
+  chapters: Chapter[] = [],
+): boolean {
+  if (!chapter || chapterKindOf(chapter) !== "vyklad") return false;
+  return childChapters(chapters, chapter.id).length === 0;
+}
+
+export function isVykladFolderChapter(
+  chapter: Pick<Chapter, "kind" | "parentId" | "id"> | null | undefined,
+  chapters: Chapter[],
+): boolean {
+  if (!chapter || chapterKindOf(chapter) !== "vyklad") return false;
+  if (!chapter.parentId) return true;
+  return childChapters(chapters, chapter.id).length > 0;
 }
 
 export function nextChapterKind(kind?: ChapterKind): ChapterKind {

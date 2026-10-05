@@ -8,7 +8,6 @@ import {
   useRef,
   useState,
   type CSSProperties,
-  type MouseEvent,
   type ReactNode,
 } from "react";
 import type {
@@ -42,6 +41,7 @@ import {
 import {
   MARKUP_ARROW_OPTIONS,
   cloneBoardMarkup,
+  emptyBoardMarkup,
   markupCircleColor,
   markupFillStyles,
   toChessboardArrows,
@@ -78,6 +78,8 @@ type PositionSetupBoardProps = {
   onPlayMove?: (uci: string) => void;
   topArrowUci?: string;
   lastMoveSquares?: string[];
+  positionEdit?: boolean;
+  onWipe?: () => void;
 };
 
 export function PositionSetupBoard({
@@ -97,6 +99,8 @@ export function PositionSetupBoard({
   onPlayMove,
   topArrowUci,
   lastMoveSquares = [],
+  positionEdit = false,
+  onWipe,
 }: PositionSetupBoardProps) {
   const { board, pieces } = useBoardAppearance();
   const rootRef = useRef<HTMLDivElement>(null);
@@ -108,6 +112,7 @@ export function PositionSetupBoard({
   const [arrowFrom, setArrowFrom] = useState<string | null>(null);
   const arrowFromRef = useRef<string | null>(null);
   const skipClickRef = useRef(false);
+  const drewArrowRef = useRef(false);
   arrowFromRef.current = arrowFrom;
 
   useEffect(() => {
@@ -138,15 +143,18 @@ export function PositionSetupBoard({
   const turn = fenTurn(displayFen);
   const valid = isValidFen(displayFen);
   const layer = markup;
-  const setupMode = tool === "piece" && !playMode;
-  const canMarkup = Boolean(onMarkupChange && !setupMode && !spare);
+  const showSetupChrome = (positionEdit || tool === "piece") && !playMode;
+  const pieceSetup = showSetupChrome && tool === "piece";
+  const canMarkup = Boolean(onMarkupChange && !spare);
+  // Šipky i při UP / figurkách — pravý tah. Spare jen blokuje bodové značky.
+  const canDrawArrows = Boolean(onMarkupChange) && !playMode;
   const canPlay = playMode && !moveLocked && Boolean(onPlayMove);
 
   useEffect(() => {
     setSelected(null);
     selectedRef.current = null;
     setSpare(null);
-  }, [displayFen, playMode, setupMode]);
+  }, [displayFen, playMode, pieceSetup]);
 
   const dests = useMemo(() => {
     if (!canPlay || !selected || !valid) return [];
@@ -194,8 +202,8 @@ export function PositionSetupBoard({
 
   const addArrow = useCallback(
     (from: string, to: string) => {
-      if (!layer || !onMarkupChange) return;
-      const next = cloneBoardMarkup(layer);
+      if (!onMarkupChange) return;
+      const next = cloneBoardMarkup(layer ?? emptyBoardMarkup());
       next.arrows = upsertArrow(next.arrows, from, to, brush);
       onMarkupChange(next);
       arrowFromRef.current = null;
@@ -206,8 +214,8 @@ export function PositionSetupBoard({
 
   const applyPointMarkup = useCallback(
     (square: string) => {
-      if (!layer || !onMarkupChange) return;
-      const next = cloneBoardMarkup(layer);
+      if (!onMarkupChange) return;
+      const next = cloneBoardMarkup(layer ?? emptyBoardMarkup());
       if (tool === "color") {
         next.colors = toggleBrushOnSquare(next.colors, square, brush);
       } else {
@@ -244,64 +252,57 @@ export function PositionSetupBoard({
         if (isSideToMove(game, square)) setSelected(square);
         return;
       }
-      if (setupMode) {
-        if (spare) {
-          onChange(setFenPiece(displayFen, square, spare));
-        }
+      if (showSetupChrome && spare) {
+        onChange(setFenPiece(displayFen, square, spare));
+        return;
+      }
+      if (pieceSetup) {
+        return;
+      }
+      if (canMarkup && (tool === "color" || tool === "circle")) {
+        applyPointMarkup(square);
         return;
       }
       onToggleSquare?.(square);
     },
     [
+      applyPointMarkup,
+      canMarkup,
       displayFen,
       moveLocked,
       onChange,
       onToggleSquare,
       playMode,
-      setupMode,
+      pieceSetup,
+      showSetupChrome,
       spare,
+      tool,
       tryLegal,
     ],
   );
 
   const onSquareRightClick = useCallback(
     ({ square }: SquareHandlerArgs) => {
-      if (skipClickRef.current) {
+      if (skipClickRef.current || drewArrowRef.current) {
         skipClickRef.current = false;
+        drewArrowRef.current = false;
         return;
       }
       if (playMode) return;
-      if (setupMode) {
+      if (pieceSetup) {
         onChange(setFenPiece(displayFen, square, null));
         return;
       }
       if (canMarkup) applyPointMarkup(square);
     },
-    [applyPointMarkup, canMarkup, displayFen, onChange, playMode, setupMode],
-  );
-
-  const onSquareMouseDown = useCallback(
-    ({ square }: SquareHandlerArgs, event: MouseEvent) => {
-      if (event.button !== 2 || !canMarkup) return;
-      arrowFromRef.current = square;
-      setArrowFrom(square);
-    },
-    [canMarkup],
-  );
-
-  const onSquareMouseUp = useCallback(
-    ({ square }: SquareHandlerArgs, event: MouseEvent) => {
-      if (event.button !== 2 || !canMarkup) return;
-      const from = arrowFromRef.current;
-      if (from && from !== square) {
-        skipClickRef.current = true;
-        addArrow(from, square);
-        return;
-      }
-      arrowFromRef.current = null;
-      setArrowFrom(null);
-    },
-    [addArrow, canMarkup],
+    [
+      applyPointMarkup,
+      canMarkup,
+      displayFen,
+      onChange,
+      pieceSetup,
+      playMode,
+    ],
   );
 
   const onPieceDrop = useCallback(
@@ -310,7 +311,7 @@ export function PositionSetupBoard({
         if (!targetSquare) return false;
         return tryLegal(sourceSquare, targetSquare, piece.pieceType);
       }
-      if (!setupMode) return false;
+      if (!pieceSetup) return false;
       if (!targetSquare) {
         if (sourceSquare) onChange(setFenPiece(displayFen, sourceSquare, null));
         return true;
@@ -319,7 +320,7 @@ export function PositionSetupBoard({
       onChange(moveFenPiece(displayFen, sourceSquare, targetSquare));
       return true;
     },
-    [displayFen, onChange, playMode, setupMode, tryLegal],
+    [displayFen, onChange, playMode, pieceSetup, tryLegal],
   );
 
   const squareRenderer = useCallback(
@@ -358,7 +359,7 @@ export function PositionSetupBoard({
       position: displayFen,
       boardOrientation: orientation,
       pieces,
-      allowDragging: playMode ? canPlay : setupMode && !spare,
+      allowDragging: playMode ? canPlay : pieceSetup && !spare,
       allowDragOffBoard: !playMode,
       allowDrawingArrows: false,
       showAnimations: false,
@@ -368,8 +369,6 @@ export function PositionSetupBoard({
       squareRenderer,
       onSquareClick: ({ square }: SquareHandlerArgs) => handleSquare(square),
       onSquareRightClick,
-      onSquareMouseDown,
-      onSquareMouseUp,
       onPieceDrop,
       onPieceClick: ({ square }: PieceHandlerArgs) => {
         if (square) handleSquare(square);
@@ -386,11 +385,9 @@ export function PositionSetupBoard({
       spare,
       canPlay,
       playMode,
-      setupMode,
+      pieceSetup,
       onPieceDrop,
       handleSquare,
-      onSquareMouseDown,
-      onSquareMouseUp,
       onSquareRightClick,
       pieces,
       squareRenderer,
@@ -403,7 +400,7 @@ export function PositionSetupBoard({
       ref={rootRef}
       className={cn("flex min-h-0 flex-col gap-0", className)}
     >
-      {setupMode ? (
+      {showSetupChrome ? (
       <div data-setup-chrome>
         <PieceTray
           pieces={pieces}
@@ -416,6 +413,44 @@ export function PositionSetupBoard({
       <div
         className="relative shrink-0 overflow-visible"
         onContextMenu={(event) => event.preventDefault()}
+        onPointerDown={(event) => {
+          if (event.button !== 2 || !canDrawArrows) return;
+          const square = (event.target as HTMLElement | null)
+            ?.closest?.("[data-square]")
+            ?.getAttribute("data-square");
+          if (!square) return;
+          if (spare) setSpare(null);
+          drewArrowRef.current = false;
+          arrowFromRef.current = square;
+          setArrowFrom(square);
+        }}
+        onPointerUp={(event) => {
+          if (event.button !== 2 || !canDrawArrows) return;
+          const square = (event.target as HTMLElement | null)
+            ?.closest?.("[data-square]")
+            ?.getAttribute("data-square");
+          const from = arrowFromRef.current;
+          if (!from || !square) {
+            arrowFromRef.current = null;
+            setArrowFrom(null);
+            return;
+          }
+          if (from !== square) {
+            skipClickRef.current = true;
+            drewArrowRef.current = true;
+            addArrow(from, square);
+            return;
+          }
+          arrowFromRef.current = null;
+          setArrowFrom(null);
+        }}
+        onPointerLeave={(event) => {
+          if (event.buttons & 2) return;
+          if (!drewArrowRef.current) {
+            arrowFromRef.current = null;
+            setArrowFrom(null);
+          }
+        }}
         style={
           boardPx
             ? { width: boardPx, height: boardPx }
@@ -434,7 +469,7 @@ export function PositionSetupBoard({
             <Chessboard key={`${board.id}-${boardId}-${orientation}`} options={options} />
           </BoardFrame>
       </div>
-      {setupMode ? (
+      {showSetupChrome ? (
       <div
         data-setup-chrome
         className="relative flex shrink-0 items-center justify-center"
@@ -463,7 +498,7 @@ export function PositionSetupBoard({
           <button
             type="button"
             className="rounded bg-muted px-1.5 py-0.5 text-[11px]"
-            onClick={() => onChange(EMPTY_SETUP_FEN)}
+            onClick={() => (onWipe ? onWipe() : onChange(EMPTY_SETUP_FEN))}
           >
             0
           </button>
