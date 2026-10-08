@@ -1339,9 +1339,11 @@ export function AdminPuzzleForm() {
                     markup={
                       isVyklad
                         ? vykladLayer
-                        : editingMarks
-                          ? marksLayer
-                          : markupLayer
+                        : inWrong && selectedReply?.answer && !hoverOther
+                          ? markupLayer
+                          : editingMarks
+                            ? marksLayer
+                            : markupLayer
                     }
                     topArrowUci={
                       editingMarks
@@ -1383,21 +1385,12 @@ export function AdminPuzzleForm() {
                               writeVykladLayer(layer);
                               return;
                             }
-                            const cleanAfter =
-                              markupPhase === "after" && solutionUci
-                                ? stripMoveArrow(layer, solutionUci)
-                                : layer;
-                            if (setupOpen || markupPhase === "before") {
-                              setForm((current) => ({
-                                ...current,
-                                markup: {
-                                  ...current.markup,
-                                  before: layer,
-                                },
-                              }));
-                              return;
-                            }
-                            if (wrongEdit !== null) {
+                            // ŠT edit: vždy do reply.markup — ne do before/after.
+                            if (
+                              wrongEdit !== null &&
+                              selectedReply?.answer &&
+                              !hoverOther
+                            ) {
                               setForm((current) => {
                                 const next = [...current.wrongReplies];
                                 const row = next[wrongEdit];
@@ -1410,6 +1403,20 @@ export function AdminPuzzleForm() {
                                 };
                                 return { ...current, wrongReplies: next };
                               });
+                              return;
+                            }
+                            const cleanAfter =
+                              markupPhase === "after" && solutionUci
+                                ? stripMoveArrow(layer, solutionUci)
+                                : layer;
+                            if (setupOpen || markupPhase === "before") {
+                              setForm((current) => ({
+                                ...current,
+                                markup: {
+                                  ...current.markup,
+                                  before: layer,
+                                },
+                              }));
                               return;
                             }
                             setForm((current) => ({
@@ -1639,10 +1646,21 @@ export function AdminPuzzleForm() {
                   markup={
                     isVyklad
                       ? { ...form.markup, before: vykladLayer }
-                      : form.markup
+                      : inWrong && selectedReply?.answer
+                        ? {
+                            ...form.markup,
+                            before: selectedReply.markup ?? emptyBoardMarkup(),
+                          }
+                        : form.markup
                   }
-                  layer={marksLayer}
-                  phase={isVyklad || setupOpen ? "before" : markupPhase}
+                  layer={
+                    inWrong && selectedReply?.answer
+                      ? (selectedReply.markup ?? emptyBoardMarkup())
+                      : marksLayer
+                  }
+                  phase={
+                    isVyklad || setupOpen || inWrong ? "before" : markupPhase
+                  }
                   tool={markupTool}
                     brush={inWrong && markupBrush === "green" ? "red" : markupBrush}
                   kind={form.kind}
@@ -1667,19 +1685,12 @@ export function AdminPuzzleForm() {
                       writeVykladLayer(markup.before);
                       return;
                     }
-                    if (setupOpen) {
-                      setForm((current) => ({
-                        ...current,
-                        markup: {
-                          ...current.markup,
-                          before: cloneBoardMarkup(markup.before),
-                        },
-                      }));
-                      return;
-                    }
-                    if (wrongEdit !== null) {
-                      if (!selectedReply?.answer || hoverOther) return;
-                      const layer = cloneBoardMarkup(markup[markupPhase]);
+                    if (
+                      wrongEdit !== null &&
+                      selectedReply?.answer &&
+                      !hoverOther
+                    ) {
+                      const layer = cloneBoardMarkup(markup.before);
                       setForm((current) => {
                         const next = [...current.wrongReplies];
                         const row = next[wrongEdit];
@@ -1692,6 +1703,16 @@ export function AdminPuzzleForm() {
                         };
                         return { ...current, wrongReplies: next };
                       });
+                      return;
+                    }
+                    if (setupOpen) {
+                      setForm((current) => ({
+                        ...current,
+                        markup: {
+                          ...current.markup,
+                          before: cloneBoardMarkup(markup.before),
+                        },
+                      }));
                       return;
                     }
                     setForm((current) => ({ ...current, markup }));
