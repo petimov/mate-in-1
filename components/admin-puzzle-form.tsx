@@ -47,13 +47,17 @@ import {
   chapterChain,
   chapterKindOf,
   chapterSideOf,
+  childCopyTitle,
   isVykladEditorChapter,
   newId,
   nextSort,
+  puzzlesInChapter,
   siblingCopyTitle,
   sortChapters,
   uniqueSlug,
+  vykladGroupChapters,
   withMateSubchapters,
+  type Chapter,
   type Curriculum,
 } from "@/lib/curriculum";
 import {
@@ -94,6 +98,33 @@ function emptyForm() {
 }
 
 type PuzzleForm = ReturnType<typeof emptyForm>;
+
+function formFromPuzzle(puzzle: Puzzle): PuzzleForm {
+  return {
+    id: puzzle.id,
+    title: puzzle.title,
+    fen: puzzle.fen,
+    kind: puzzleKind(puzzle),
+    move: puzzle.moves[0] ?? "",
+    moves: puzzle.moves.map(normalizeUci).filter(Boolean),
+    squares: puzzle.squares.join(" "),
+    theme: puzzle.theme ?? "",
+    level: puzzle.level ?? "",
+    hint: puzzle.hint ?? "",
+    source: puzzle.source ?? "",
+    explanation: puzzle.explanation ?? "",
+    videoUrl: puzzle.videoUrl ?? "",
+    wrongReplies: puzzle.wrongReplies?.length
+      ? puzzle.wrongReplies.map((reply) => ({
+          ...reply,
+          markup: reply.markup ? cloneBoardMarkup(reply.markup) : undefined,
+        }))
+      : [],
+    markup: clonePuzzleMarkup(puzzle.markup),
+    chapterId: puzzle.chapterId ?? null,
+    sort: puzzle.sort ?? 0,
+  };
+}
 
 function formFingerprint(form: PuzzleForm): string {
   return JSON.stringify({
@@ -158,6 +189,7 @@ export function AdminPuzzleForm() {
   const [linePly, setLinePly] = useState(0);
   const [historySize, setHistorySize] = useState(0);
   const [undoLabel, setUndoLabel] = useState<string | null>(null);
+  const [boardEpoch, setBoardEpoch] = useState(0);
   const historyRef = useRef<AdminSnapshot<ReturnType<typeof emptyForm>>[]>([]);
   const puzzlesRef = useRef(puzzles);
   const undoBusy = useRef(false);
@@ -241,6 +273,7 @@ export function AdminPuzzleForm() {
 
   async function restoreSnapshot(snap: AdminSnapshot<ReturnType<typeof emptyForm>>) {
     const currentPuzzles = puzzlesRef.current;
+    // Nejdřív UI — ať Zpět hned vidíš, než doběhne síť.
     setCurriculum(snap.curriculum);
     setPuzzles(snap.puzzles);
     puzzlesRef.current = snap.puzzles;
@@ -248,6 +281,14 @@ export function AdminPuzzleForm() {
     setSelectedChapterId(snap.selectedChapterId);
     setForm(snap.form);
     setSavedPrint(formFingerprint(snap.form));
+    setWrongEdit(null);
+    setWrongHover(null);
+    setLinePly(0);
+    setSetupOpen(false);
+    setPlayTarget(null);
+    setMarkupPhase("before");
+    setBoardEpoch((n) => n + 1);
+    setStatus(`Zpět: ${snap.label}`);
 
     const res = await fetch("/api/curriculum", {
       method: "POST",
@@ -270,7 +311,6 @@ export function AdminPuzzleForm() {
     }
 
     await persistPuzzleDiffs(currentPuzzles, snap.puzzles);
-    setStatus(`Zpět: ${snap.label}`);
   }
 
   async function undoLast() {
@@ -414,74 +454,93 @@ export function AdminPuzzleForm() {
   }
 
   async function duplicatePuzzle(puzzle: Puzzle) {
-    const parentId = puzzle.chapterId ?? selectedChapterId;
-    const parent = curriculum.chapters.find((item) => item.id === parentId);
-    if (!parent) {
+    const leafId = puzzle.chapterId ?? selectedChapterId;
+    const leaf = curriculum.chapters.find((item) => item.id === leafId);
+    if (!leaf) {
       setStatus("Stejná úloha potřebuje kapitolu.");
       return;
     }
-    const kids = childChapters(
-      curriculum.chapters,
-      parent.id,
-      parent.courseId,
+    const groupParentId = leaf.parentId;
+    if (!groupParentId) {
+      setStatus("Stejná úloha potřebuje nadkapitolu (group).");
+      return;
+    }
+    const groupParent = curriculum.chapters.find(
+      (item) => item.id === groupParentId,
     );
+    if (!groupParent) {
+      setStatus("Stejná úloha potřebuje nadkapitolu (group).");
+      return;
+    }
+
+    const siblings = vykladGroupChapters(curriculum.chapters, leaf.id);
+    const inGroup = siblings.length >= 2;
     const usedTitles = [
-      ...kids.map((item) => item.title),
+      ...siblings.map((item) => item.title),
       ...puzzles
-        .filter((item) => item.chapterId === parent.id)
+        .filter((item) =>
+          siblings.some((sib) => sib.id === item.chapterId),
+        )
         .map((item) => item.title),
     ];
-    const title = siblingCopyTitle(puzzle.title, usedTitles);
-    const after = puzzle.sort ?? 0;
-    const extra = {
+
+    let chaptersNext = curriculum.chapters;
+    // První klik mimo group: zajisti P1 název aktuální kapitoly.
+    if (!inGroup && !/P\d+\s*$/.test(leaf.title)) {
+      const p1 = childCopyTitle(groupParent.title, usedTitles);
+      chaptersNext = chaptersNext.map((item) =>
+        item.id === leaf.id
+          ? {
+              ...item,
+              title: p1,
+              slug: uniqueSlug(
+                p1,
+                chaptersNext
+                  .filter((c) => c.id !== leaf.id)
+                  .map((c) => c.slug),
+              ),
+            }
+          : item,
+      );
+      usedTitles.push(p1);
+    } else if (!usedTitles.includes(leaf.title)) {
+      usedTitles.push(leaf.title);
+    }
+
+    const sourceTitle =
+      chaptersNext.find((item) => item.id === leaf.id)?.title ?? leaf.title;
+    // Další člen groupy: P2, P3… (sibling číslo z aktuálního / P1).
+    const nextTitle = siblingCopyTitle(sourceTitle, usedTitles);
+
+    const lastSort = siblings.reduce(
+      (max, item) => Math.max(max, item.sort),
+      leaf.sort,
+    );
+    const extra: Chapter = {
       id: newId(),
-      courseId: parent.courseId,
-      parentId: parent.id,
+      courseId: groupParent.courseId,
+      parentId: groupParent.id,
       slug: uniqueSlug(
-        title,
-        curriculum.chapters
-          .filter((item) => item.courseId === parent.courseId)
+        nextTitle,
+        chaptersNext
+          .filter((item) => item.courseId === groupParent.courseId)
           .map((item) => item.slug),
       ),
-      title,
-      sort: after + 1,
-      kind: chapterKindOf(parent),
-      side: parent.side ?? chapterSideOf(curriculum.chapters, parent.id),
+      title: nextTitle,
+      sort: lastSort + 1,
+      kind: chapterKindOf(leaf),
+      side: leaf.side ?? chapterSideOf(curriculum.chapters, leaf.id),
     };
-    const label = `Stejná úloha „${title}“`;
+    const label = `Stejná úloha „${nextTitle}“`;
     commitHistory(label);
     const nextCurriculum = {
       ...curriculum,
-      chapters: [
-        ...curriculum.chapters.map((item) =>
-          item.parentId === parent.id && item.sort > after
-            ? { ...item, sort: item.sort + 1 }
-            : item,
-        ),
-        extra,
-      ],
+      chapters: [...chaptersNext, extra],
     };
     const ok = await persistCurriculum(nextCurriculum);
     if (!ok) {
       dropLastHistory(label);
       return;
-    }
-    const bumped = puzzles.filter(
-      (item) => item.chapterId === parent.id && (item.sort ?? 0) > after,
-    );
-    for (const item of bumped) {
-      await persistPuzzle(item, parent.id, (item.sort ?? 0) + 1);
-    }
-    if (bumped.length) {
-      setPuzzles((current) => {
-        const next = current.map((item) =>
-          item.chapterId === parent.id && (item.sort ?? 0) > after
-            ? { ...item, sort: (item.sort ?? 0) + 1 }
-            : item,
-        );
-        puzzlesRef.current = next;
-        return next;
-      });
     }
     const res = await fetch("/api/puzzles", {
       method: "POST",
@@ -489,7 +548,7 @@ export function AdminPuzzleForm() {
       body: JSON.stringify({
         ...puzzleToSaveBody(puzzle),
         id: undefined,
-        title,
+        title: nextTitle,
         chapterId: extra.id,
         sort: 0,
         allowEmptyMoves: true,
@@ -510,6 +569,7 @@ export function AdminPuzzleForm() {
     });
     setSelectedChapterId(extra.id);
     loadPuzzle(created);
+    setLinePly(0);
     setStatus(`${label}. Ctrl+Z vrátí.`);
   }
 
@@ -764,30 +824,7 @@ export function AdminPuzzleForm() {
   }, [dirty]);
 
   function loadPuzzle(puzzle: Puzzle) {
-    const next: PuzzleForm = {
-      id: puzzle.id,
-      title: puzzle.title,
-      fen: puzzle.fen,
-      kind: puzzleKind(puzzle),
-      move: puzzle.moves[0] ?? "",
-      moves: puzzle.moves.map(normalizeUci).filter(Boolean),
-      squares: puzzle.squares.join(" "),
-      theme: puzzle.theme ?? "",
-      level: puzzle.level ?? "",
-      hint: puzzle.hint ?? "",
-      source: puzzle.source ?? "",
-      explanation: puzzle.explanation ?? "",
-      videoUrl: puzzle.videoUrl ?? "",
-      wrongReplies: puzzle.wrongReplies?.length
-        ? puzzle.wrongReplies.map((reply) => ({
-            ...reply,
-            markup: reply.markup ? cloneBoardMarkup(reply.markup) : undefined,
-          }))
-        : [],
-      markup: clonePuzzleMarkup(puzzle.markup),
-      chapterId: puzzle.chapterId ?? null,
-      sort: puzzle.sort ?? 0,
-    };
+    const next = formFromPuzzle(puzzle);
     setForm(next);
     setSavedPrint(formFingerprint(next));
     setSelectedChapterId(puzzle.chapterId ?? null);
@@ -836,6 +873,17 @@ export function AdminPuzzleForm() {
     setLinePly(0);
   }
 
+  /** Prázdný název → už přidělený název kapitoly (… P1), další → S# / Pn. */
+  function autoPuzzleTitle(chapterId: string | null, excludeId?: string): string {
+    const chapter = curriculum.chapters.find((item) => item.id === chapterId);
+    if (!chapter?.title.trim()) return "Úloha";
+    const usedInChapter = puzzles
+      .filter((item) => item.chapterId === chapter.id && item.id !== excludeId)
+      .map((item) => item.title);
+    if (usedInChapter.length === 0) return chapter.title.trim();
+    return childCopyTitle(chapter.title, [...usedInChapter, chapter.title]);
+  }
+
   function writeVykladLayer(layer: BoardMarkup) {
     setForm((current) => {
       const steps = [...(current.markup.steps ?? [])];
@@ -868,12 +916,33 @@ export function AdminPuzzleForm() {
     event.preventDefault();
     setSaving(true);
     setStatus(null);
-    const saveLabel = isUuid(form.id) ? `Uložit „${form.title}“` : "Nová úloha";
-    commitHistory(saveLabel);
+    const title =
+      form.title.trim() ||
+      autoPuzzleTitle(form.chapterId, isUuid(form.id) ? form.id : undefined);
+    const saveLabel = isUuid(form.id) ? `Uložit „${title}“` : "Nová úloha";
+    // Snapshot = stav PŘED uložením (poslední serverová verze), ne aktuální dirty form.
+    const prior = isUuid(form.id)
+      ? puzzles.find((item) => item.id === form.id)
+      : undefined;
+    const priorForm = prior ? formFromPuzzle(prior) : emptyForm();
+    const nextHistory = [
+      ...historyRef.current,
+      takeSnapshot({
+        label: saveLabel,
+        curriculum,
+        puzzles,
+        courseId,
+        selectedChapterId,
+        form: priorForm,
+      }),
+    ].slice(-ADMIN_HISTORY_MAX);
+    historyRef.current = nextHistory;
+    setHistorySize(nextHistory.length);
+    setUndoLabel(saveLabel);
 
     const payload = {
       id: isUuid(form.id) ? form.id : undefined,
-      title: form.title.trim(),
+      title,
       fen: form.fen.trim(),
       kind: isVyklad ? "move" : form.kind,
       moves:
@@ -931,7 +1000,7 @@ export function AdminPuzzleForm() {
 
     setStatus(isUuid(form.id) ? "Úloha uložená." : "Úloha vytvořená.");
     const savedId = data.puzzle?.id ?? form.id;
-    const saved = { ...form, id: savedId };
+    const saved = { ...form, id: savedId, title };
     setForm(saved);
     setSavedPrint(formFingerprint(saved));
     if (wrongMode === "all") {
@@ -1011,9 +1080,9 @@ export function AdminPuzzleForm() {
     return markupPhase === "after" ? form.markup.after : form.markup.before;
   })();
   useEffect(() => {
-    if (!marksOpen) return;
+    if (!marksOpen || setupOpen) return;
     setMarkupTool((tool) => (tool === "piece" ? "arrow" : tool));
-  }, [marksOpen]);
+  }, [marksOpen, setupOpen]);
 
   const editingMarks = marksOpen || setupOpen;
   const marksLayer =
@@ -1023,60 +1092,58 @@ export function AdminPuzzleForm() {
         : form.markup.before
       : form.markup.after;
 
+  const vykladGroup = isVyklad
+    ? vykladGroupChapters(curriculum.chapters, form.chapterId)
+    : [];
+  const vykladGroupMembers = vykladGroup
+    .map((chapter) => ({
+      chapter,
+      puzzle: puzzlesInChapter(
+        puzzles,
+        chapter.id,
+        false,
+        curriculum.chapters,
+      )[0],
+    }))
+    .filter(
+      (
+        item,
+      ): item is { chapter: Chapter; puzzle: Puzzle } => Boolean(item.puzzle),
+    );
+  const vykladGroupIndex = Math.max(
+    0,
+    vykladGroupMembers.findIndex((item) => item.puzzle.id === form.id),
+  );
+
   const toolsBar = (
                   <div className="flex flex-wrap items-center gap-2">
                     {isVyklad ? (
                       <>
-                        <button
-                          type="button"
-                          className={`h-8 min-w-8 rounded-md border border-border px-2 font-mono ${
-                            linePly === 0 ? "ring-1 ring-foreground/25" : ""
-                          }`}
-                          title="Výchozí pozice"
-                          onClick={() => setLinePly(0)}
-                        >
-                          0
-                        </button>
-                        {vykladLine.plies.map((ply, index) => (
+                        {(vykladGroupMembers.length > 0
+                          ? vykladGroupMembers
+                          : [null]
+                        ).map((member, index) => (
                           <button
-                            key={`${ply.uci}-${index}`}
+                            key={member?.chapter.id ?? `solo-${index}`}
                             type="button"
-                            className={`h-8 rounded-md border border-border px-2 font-mono ${
-                              linePly === index + 1
+                            className={`h-8 min-w-8 rounded-md border border-border px-2 font-mono ${
+                              (vykladGroupMembers.length > 0
+                                ? vykladGroupIndex
+                                : 0) === index
                                 ? "ring-1 ring-foreground/25"
                                 : ""
                             }`}
-                            title={ply.uci}
-                            onClick={() => setLinePly(index + 1)}
-                          >
-                            {uciToCzechSan(vykladLine.fens[index], ply.uci) ||
-                              ply.san}
-                          </button>
-                        ))}
-                        {form.moves.length ? (
-                          <button
-                            type="button"
-                            className="h-8 px-2 text-lg leading-none text-muted-foreground hover:text-foreground"
-                            title="Smazat poslední tah"
+                            title={member?.chapter.title ?? "Pozice"}
                             onClick={() => {
-                              setForm((current) => {
-                                const moves = current.moves.slice(0, -1);
-                                return {
-                                  ...current,
-                                  moves,
-                                  move: moves[0] ?? "",
-                                };
-                              });
-                              setLinePly((current) => Math.max(0, current - 1));
+                              if (member?.puzzle) {
+                                loadPuzzle(member.puzzle);
+                                setLinePly(0);
+                              }
                             }}
                           >
-                            ×
+                            {index}
                           </button>
-                        ) : (
-                          <span className="text-sm text-muted-foreground">
-                            hraj na šachovnici
-                          </span>
-                        )}
+                        ))}
                       </>
                     ) : (
                     <button
@@ -1258,9 +1325,13 @@ export function AdminPuzzleForm() {
               onMovePuzzle={(puzzleId, chapterId, beforeId) =>
                 void onMovePuzzle(puzzleId, chapterId, beforeId)
               }
-              onNewPuzzle={(chapterId) => {
+              onNewPuzzle={(chapterId, titleHint) => {
                 setSelectedChapterId(chapterId);
-                const next = { ...emptyForm(), chapterId };
+                const next = {
+                  ...emptyForm(),
+                  chapterId,
+                  title: titleHint?.trim() || autoPuzzleTitle(chapterId),
+                };
                 setForm(next);
                 setSavedPrint(formFingerprint(next));
                 setWrongEdit(null);
@@ -1287,10 +1358,13 @@ export function AdminPuzzleForm() {
             >
               <div className="flex h-full min-h-0 w-[min(calc(100vh-8rem),calc(100vw-36rem))] shrink-0 flex-col px-1">
                   <PositionSetupBoard
+                    key={`admin-board-${boardEpoch}`}
                     boardId="admin-preview-setup"
                     className="min-h-0 flex-1"
                     fen={isVyklad ? vykladFen : boardFen}
-                    positionEdit={setupOpen}
+                    positionEdit={
+                      setupOpen || (isVyklad && markupTool === "piece")
+                    }
                     onWipe={wipeBoardExtras}
                     playMode={
                       isVyklad
@@ -1320,7 +1394,16 @@ export function AdminPuzzleForm() {
                     }}
                     onChange={(fen) => {
                       if (wrongEdit !== null) return;
-                      if (isVyklad && !setupOpen) return;
+                      if (
+                        isVyklad &&
+                        !setupOpen &&
+                        markupTool !== "piece"
+                      ) {
+                        return;
+                      }
+                      if (isVyklad && markupTool === "piece" && linePly > 0) {
+                        setLinePly(0);
+                      }
                       if (!isVyklad && markupPhase === "after") return;
                       setForm((current) => ({ ...current, fen }));
                     }}
@@ -1444,9 +1527,15 @@ export function AdminPuzzleForm() {
                   {toolsBar}
                 <Input
                   id="title"
-                  required
                   className="h-8 px-2"
-                  placeholder="Název"
+                  placeholder={
+                    form.chapterId
+                      ? autoPuzzleTitle(
+                          form.chapterId,
+                          isUuid(form.id) ? form.id : undefined,
+                        )
+                      : "Název (auto)"
+                  }
                   value={form.title}
                   onChange={(e) => setForm({ ...form, title: e.target.value })}
                 />
@@ -1491,7 +1580,10 @@ export function AdminPuzzleForm() {
                     </Button>
                     <span className="ml-auto inline-flex">{wrongModeButtons}</span>
                     </div>
-                    <div className="mt-2.5 flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-0.5 pb-2">
+                    <div
+                      className="mt-2.5 flex min-h-0 flex-1 flex-col overflow-y-auto px-0.5 pb-2"
+                      onMouseLeave={() => setWrongHover(null)}
+                    >
                     {form.wrongReplies.map((reply, index) => (
                       <div
                         key={index}
@@ -1502,12 +1594,7 @@ export function AdminPuzzleForm() {
                           if (markupTool === "piece") setMarkupTool("arrow");
                         }}
                         onMouseEnter={() => setWrongHover(index)}
-                        onMouseLeave={() =>
-                          setWrongHover((current) =>
-                            current === index ? null : current,
-                          )
-                        }
-                        className={`flex cursor-pointer items-center gap-2 outline-none ${wrongEdit === index ? "rounded bg-foreground/5 ring-1 ring-foreground/20" : wrongHover === index ? "rounded bg-foreground/5" : ""}`}
+                        className={`flex cursor-pointer items-center gap-2 py-0.5 outline-none ${wrongEdit === index ? "rounded bg-foreground/5 ring-1 ring-foreground/20" : wrongHover === index ? "rounded bg-foreground/5" : ""}`}
                       >
                         <Button
                           type="button"
@@ -1666,6 +1753,7 @@ export function AdminPuzzleForm() {
                   kind={form.kind}
                   canAfter={Boolean(afterFen)}
                   hidePhase={isVyklad || setupOpen || wrongEdit !== null}
+                  showPieceTool={isVyklad || setupOpen}
                   onPhase={(phase) => {
                     setMarkupPhase(phase);
                     if (phase === "after") {
@@ -1674,7 +1762,13 @@ export function AdminPuzzleForm() {
                       );
                     }
                   }}
-                  onTool={setMarkupTool}
+                  onTool={(tool) => {
+                    setMarkupTool(tool);
+                    if (isVyklad && tool === "piece") {
+                      setLinePly(0);
+                      setSetupOpen(false);
+                    }
+                  }}
                   onBrush={(brush) =>
                     setMarkupBrush(
                       wrongEdit !== null && brush === "green" ? "red" : brush,

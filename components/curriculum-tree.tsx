@@ -59,7 +59,7 @@ type CurriculumTreeProps = {
   onSelectPuzzle: (puzzle: Puzzle) => void;
   onCurriculum: (next: Curriculum, label?: string) => void;
   onMovePuzzle: (puzzleId: string, chapterId: string | null, beforeId?: string) => void;
-  onNewPuzzle: (chapterId: string) => void;
+  onNewPuzzle: (chapterId: string, titleHint?: string) => void;
   onDeletePuzzles: (ids: string[]) => void;
   onDeleteSubtree: (chapterIds: string[], label: string) => void;
   onDeleteCourse: (id: string) => void;
@@ -276,7 +276,7 @@ export function CurriculumTree({
       `Nová kapitola „${title}“`,
     );
     revealNewChapter(extra.id, extra.parentId);
-    onNewPuzzle(extra.id);
+    onNewPuzzle(extra.id, extra.title);
   }
 
   function addChildOf(parent: Chapter) {
@@ -295,7 +295,7 @@ export function CurriculumTree({
     };
     setChapters([...curriculum.chapters, extra], `Nová podkapitola „${title}“`);
     revealNewChapter(extra.id, parent.id);
-    onNewPuzzle(extra.id);
+    onNewPuzzle(extra.id, extra.title);
   }
 
   function renameChapter(chapter: Chapter) {
@@ -862,7 +862,7 @@ function ChapterNode({
   onToggleChapterPuzzles: (chapterId: string) => void;
   dropChapterId: string | null;
   setDropChapterId: (id: string | null) => void;
-  onNewPuzzle: (chapterId: string) => void;
+  onNewPuzzle: (chapterId: string, titleHint?: string) => void;
   onRenamePuzzle: (puzzle: Puzzle) => void;
   onDuplicatePuzzle: (puzzle: Puzzle) => void;
   onDeletePuzzle: (puzzle: Puzzle) => void;

@@ -24,6 +24,7 @@ type MarkupPaletteProps = {
   kind: "move" | "squares";
   canAfter: boolean;
   hidePhase?: boolean;
+  showPieceTool?: boolean;
   onPhase: (phase: MarkupPhase) => void;
   onTool: (tool: SetupTool) => void;
   onBrush: (brush: Brush) => void;
@@ -39,6 +40,7 @@ export function MarkupPalette({
   kind,
   canAfter,
   hidePhase = false,
+  showPieceTool = false,
   onPhase,
   onTool,
   onBrush,
@@ -64,6 +66,11 @@ export function MarkupPalette({
               <span className="text-[10px] text-amber-500">chybí tah</span>
             ) : null}
           </>
+        ) : null}
+        {showPieceTool ? (
+          <Chip active={tool === "piece"} onClick={() => onTool("piece")}>
+            Figurky
+          </Chip>
         ) : null}
         <Chip active={tool === "arrow"} onClick={() => onTool("arrow")}>
           Šipka

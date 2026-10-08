@@ -386,6 +386,29 @@ export function childCopyTitle(parent: string, used: string[]): string {
   return uniqueCopyTitle(`${parent.trimEnd()} P1`, used);
 }
 
+/** Sibling výklad kapitoly pod stejným parentem = group pozic (P1…Pn). */
+export function vykladGroupChapters(
+  chapters: Chapter[],
+  chapterId: string | null | undefined,
+): Chapter[] {
+  if (!chapterId) return [];
+  const chapter = chapters.find((item) => item.id === chapterId);
+  if (!chapter) return [];
+  if (!chapter.parentId) {
+    return chapterKindOf(chapter) === "vyklad" ? [chapter] : [];
+  }
+  return childChapters(chapters, chapter.parentId, chapter.courseId).filter(
+    (item) => chapterKindOf(item) === "vyklad",
+  );
+}
+
+export function isVykladGroup(
+  chapters: Chapter[],
+  chapterId: string | null | undefined,
+) {
+  return vykladGroupChapters(chapters, chapterId).length >= 2;
+}
+
 export function parseCurriculum(raw: unknown): Curriculum | null {
   if (!raw || typeof raw !== "object") return null;
   const row = raw as { courses?: unknown; chapters?: unknown };
