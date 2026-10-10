@@ -445,12 +445,14 @@ export function vykladGroupParentId(
   chapterId: string | null | undefined,
 ): string | null {
   if (!chapterId) return null;
-  let chapter = chapters.find((item) => item.id === chapterId);
-  if (!chapter) return null;
+  const start = chapters.find((item) => item.id === chapterId);
+  if (!start) return null;
+  let chapter = start;
 
   // S# pod Pn / „P1 2“ → začni od toho parentu
   if (/S\d+\s*$/i.test(chapter.title) && chapter.parentId) {
-    const parent = chapters.find((item) => item.id === chapter.parentId);
+    const parentId = chapter.parentId;
+    const parent = chapters.find((item) => item.id === parentId);
     if (parent && isVykladGroupShellTitle(parent.title)) {
       chapter = parent;
     }
@@ -458,7 +460,8 @@ export function vykladGroupParentId(
 
   // Vylez z vnořených Pn / „P1 2“ nahoru k nadkapitole
   while (chapter.parentId && isVykladGroupShellTitle(chapter.title)) {
-    const parent = chapters.find((item) => item.id === chapter!.parentId);
+    const parentId = chapter.parentId;
+    const parent = chapters.find((item) => item.id === parentId);
     if (!parent) break;
     if (isVykladGroupShellTitle(parent.title)) {
       chapter = parent;
