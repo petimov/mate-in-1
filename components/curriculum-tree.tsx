@@ -294,12 +294,9 @@ export function CurriculumTree({
   function addChildOf(parent: Chapter, sourcePuzzle?: Puzzle) {
     if (!course) return;
     const isVyklad = chapterKindOf(parent) === "vyklad";
-    // Cvičení: jen kapitola (prompt), ne hybrid s prázdnou úlohou.
-    // Výklad: auto název + kopie pozice do nové podkapitoly.
-    const title = isVyklad
-      ? childCopyTitle(parent.title, usedTitles(parent.id))
-      : window.prompt("Název podkapitoly")?.trim() ?? "";
-    if (!title) return;
+    // Vždy auto název (prompt u C často selže / zruší → „nejde“).
+    // Výklad: ještě kopie pozice. Cvičení: jen strom, hned přejmenovat.
+    const title = childCopyTitle(parent.title, usedTitles(parent.id));
     const kids = childChapters(curriculum.chapters, parent.id, course.id);
     const extra: Chapter = {
       id: newId(),
@@ -313,7 +310,11 @@ export function CurriculumTree({
     };
     setChapters([...curriculum.chapters, extra], `Nová podkapitola „${title}“`);
     revealNewChapter(extra.id, parent.id);
-    if (!isVyklad) return;
+    if (!isVyklad) {
+      setRenameId(extra.id);
+      setRenameValue(title);
+      return;
+    }
     const source =
       sourcePuzzle ??
       puzzlesInChapter(puzzles, parent.id, false, curriculum.chapters)[0];
@@ -1008,17 +1009,16 @@ function ChapterNode({
           )}
         </div>
         <div className="flex shrink-0 items-center gap-0.5">
-          {isVyklad ? (
-            <IconBtn
-              title="Podkapitola · nesting o úroveň níž"
-              onClick={(event) => {
-                event.stopPropagation();
-                onAddChild(chapter, leafPuzzle);
-              }}
-            >
-              <Plus className="size-3" />
-            </IconBtn>
-          ) : (
+          <IconBtn
+            title="Podkapitola · nesting o úroveň níž"
+            onClick={(event) => {
+              event.stopPropagation();
+              onAddChild(chapter, leafPuzzle);
+            }}
+          >
+            <FolderPlus className="size-3" />
+          </IconBtn>
+          {!isVyklad ? (
             <IconBtn
               title="Nová úloha"
               onClick={(event) => {
@@ -1039,12 +1039,15 @@ function ChapterNode({
             >
               <Plus className="size-3" />
             </IconBtn>
-          )}
+          ) : null}
           <button
             type="button"
             title={isVyklad ? "Výklad" : "Cvičení"}
             className="w-5 shrink-0 rounded text-center text-[12px] font-semibold uppercase text-muted-foreground hover:bg-foreground/10 hover:text-foreground"
-            onClick={() => onCycleKind(chapter)}
+            onClick={(event) => {
+              event.stopPropagation();
+              onCycleKind(chapter);
+            }}
           >
             {isVyklad ? "V" : "C"}
           </button>
@@ -1052,7 +1055,10 @@ function ChapterNode({
             type="button"
             title={chapterSideLabel(chapter.side ?? chapterSideOf(chapters, chapter.id))}
             className="w-5 shrink-0 rounded text-center text-[12px] font-semibold uppercase text-muted-foreground hover:bg-foreground/10 hover:text-foreground"
-            onClick={() => onCycleSide(chapter)}
+            onClick={(event) => {
+              event.stopPropagation();
+              onCycleSide(chapter);
+            }}
           >
             {chapterSideShort(chapter.side ?? chapterSideOf(chapters, chapter.id))}
           </button>
@@ -1089,17 +1095,7 @@ function ChapterNode({
             >
               <Plus className="size-3" />
             </IconBtn>
-          ) : (
-            <IconBtn
-              title="Podkapitola"
-              onClick={(event) => {
-                event.stopPropagation();
-                onAddChild(chapter);
-              }}
-            >
-              <Plus className="size-3" />
-            </IconBtn>
-          )}
+          ) : null}
           <IconBtn
             title="Smazat"
             className="ml-1.5"
