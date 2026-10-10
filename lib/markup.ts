@@ -173,10 +173,15 @@ export function cloneBoardMarkup(markup?: BoardMarkup | null): BoardMarkup {
   };
 }
 
+/**
+ * ŠT vysvětlivky (proč tah není mat) → vždy červená.
+ * Barva se neváže na figuru (hnědá=kůň, žlutá=pěšec…).
+ * Samotný špatný tah (zelená) se drží zvlášť přes withWrongMoveArrow / stripMoveArrow.
+ */
 export function recolorGreenDefense(markup?: BoardMarkup | null): BoardMarkup {
   const next = cloneBoardMarkup(markup);
   next.arrows = next.arrows.map((arrow) =>
-    arrow.color === "green" ? { ...arrow, color: "red" } : arrow,
+    arrow.color === "red" ? arrow : { ...arrow, color: "red" as const },
   );
   return next;
 }

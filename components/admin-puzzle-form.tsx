@@ -881,7 +881,8 @@ export function AdminPuzzleForm() {
 
   useEffect(() => {
     if (wrongEdit === null) return;
-    setMarkupBrush((brush) => (brush === "green" ? "red" : brush));
+    // ŠT vysvětlivky = vždy červená (ne Montessori barva figury).
+    setMarkupBrush("red");
   }, [wrongEdit]);
 
   const dirty = formFingerprint(form) !== savedPrint;
@@ -1718,7 +1719,7 @@ export function AdminPuzzleForm() {
                         : undefined
                     }
                     tool={markupTool}
-                    brush={inWrong && markupBrush === "green" ? "red" : markupBrush}
+                    brush={inWrong ? "red" : markupBrush}
                     orientation={
                       form.chapterId
                         ? chapterSideOf(curriculum.chapters, form.chapterId)
@@ -1953,7 +1954,7 @@ export function AdminPuzzleForm() {
                     isVyklad || setupOpen || inWrong ? "before" : markupPhase
                   }
                   tool={markupTool}
-                    brush={inWrong && markupBrush === "green" ? "red" : markupBrush}
+                    brush={inWrong ? "red" : markupBrush}
                   kind={form.kind}
                   canAfter={Boolean(afterFen)}
                   hidePhase={isVyklad || setupOpen || wrongEdit !== null}
@@ -1974,9 +1975,7 @@ export function AdminPuzzleForm() {
                     }
                   }}
                   onBrush={(brush) =>
-                    setMarkupBrush(
-                      wrongEdit !== null && brush === "green" ? "red" : brush,
-                    )
+                    setMarkupBrush(wrongEdit !== null ? "red" : brush)
                   }
                   onChange={(markup) => {
                     if (isVyklad) {
