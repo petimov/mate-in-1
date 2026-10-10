@@ -59,7 +59,11 @@ type CurriculumTreeProps = {
   onSelectPuzzle: (puzzle: Puzzle) => void;
   onCurriculum: (next: Curriculum, label?: string) => void;
   onMovePuzzle: (puzzleId: string, chapterId: string | null, beforeId?: string) => void;
-  onNewPuzzle: (chapterId: string, titleHint?: string) => void;
+  onNewPuzzle: (
+    chapterId: string,
+    titleHint?: string,
+    sourcePuzzle?: Puzzle,
+  ) => void;
   onDeletePuzzles: (ids: string[]) => void;
   onDeleteSubtree: (chapterIds: string[], label: string) => void;
   onDeleteCourse: (id: string) => void;
@@ -276,13 +280,27 @@ export function CurriculumTree({
       `Nová kapitola „${title}“`,
     );
     revealNewChapter(extra.id, extra.parentId);
-    onNewPuzzle(extra.id, extra.title);
+    // Kopie pozice jen u výkladu — cvičení zůstane prázdné.
+    if (chapterKindOf(chapter) !== "vyklad") return;
+    const source = puzzlesInChapter(
+      puzzles,
+      chapter.id,
+      false,
+      curriculum.chapters,
+    )[0];
+    onNewPuzzle(extra.id, extra.title, source);
   }
 
-  function addChildOf(parent: Chapter) {
+  function addChildOf(parent: Chapter, sourcePuzzle?: Puzzle) {
     if (!course) return;
+    const isVyklad = chapterKindOf(parent) === "vyklad";
+    // Cvičení: jen kapitola (prompt), ne hybrid s prázdnou úlohou.
+    // Výklad: auto název + kopie pozice do nové podkapitoly.
+    const title = isVyklad
+      ? childCopyTitle(parent.title, usedTitles(parent.id))
+      : window.prompt("Název podkapitoly")?.trim() ?? "";
+    if (!title) return;
     const kids = childChapters(curriculum.chapters, parent.id, course.id);
-    const title = childCopyTitle(parent.title, usedTitles(parent.id));
     const extra: Chapter = {
       id: newId(),
       courseId: course.id,
@@ -295,7 +313,11 @@ export function CurriculumTree({
     };
     setChapters([...curriculum.chapters, extra], `Nová podkapitola „${title}“`);
     revealNewChapter(extra.id, parent.id);
-    onNewPuzzle(extra.id, extra.title);
+    if (!isVyklad) return;
+    const source =
+      sourcePuzzle ??
+      puzzlesInChapter(puzzles, parent.id, false, curriculum.chapters)[0];
+    onNewPuzzle(extra.id, extra.title, source);
   }
 
   function renameChapter(chapter: Chapter) {
@@ -576,11 +598,15 @@ export function CurriculumTree({
 
   useEffect(() => {
     if (!selectedPuzzleId) return;
+    const chapterId = puzzles.find(
+      (item) => item.id === selectedPuzzleId,
+    )?.chapterId;
+    if (chapterId) openAncestors(chapterId);
     const node = document.querySelector(
       `[data-puzzle-id="${CSS.escape(selectedPuzzleId)}"]`,
     );
     node?.scrollIntoView({ block: "nearest" });
-  }, [selectedPuzzleId]);
+  }, [selectedPuzzleId, puzzles]);
 
   function movePuzzleDir(puzzle: Puzzle, dir: -1 | 1) {
     const siblings = sortPuzzles(
@@ -851,7 +877,7 @@ function ChapterNode({
   onDelete: (chapter: Chapter) => void;
   onMove: (chapter: Chapter, dir: -1 | 1) => void;
   onAddSibling: (chapter: Chapter) => void;
-  onAddChild: (chapter: Chapter) => void;
+  onAddChild: (chapter: Chapter, sourcePuzzle?: Puzzle) => void;
   onCycleKind: (chapter: Chapter) => void;
   onCycleSide: (chapter: Chapter) => void;
   onDropChapter: (event: DragEvent, chapterId: string | null) => void;
@@ -862,7 +888,11 @@ function ChapterNode({
   onToggleChapterPuzzles: (chapterId: string) => void;
   dropChapterId: string | null;
   setDropChapterId: (id: string | null) => void;
-  onNewPuzzle: (chapterId: string, titleHint?: string) => void;
+  onNewPuzzle: (
+    chapterId: string,
+    titleHint?: string,
+    sourcePuzzle?: Puzzle,
+  ) => void;
   onRenamePuzzle: (puzzle: Puzzle) => void;
   onDuplicatePuzzle: (puzzle: Puzzle) => void;
   onDeletePuzzle: (puzzle: Puzzle) => void;
@@ -877,9 +907,21 @@ function ChapterNode({
   const branchSome = branchSelected > 0 && !branchAll;
   const expanded = open[chapter.id] === true;
   const isVyklad = chapterKindOf(chapter) === "vyklad";
-  // Folder with puzzle leaves (např. „Maty dámou výklad“) → no +.
-  // Pluses live on those leaves / on chapter-only nodes.
-  const showVykladChapterPluses = isVyklad && items.length === 0;
+  // Výklad: úloha = kapitola. Puzzle řádky ve stromu schovat (vypadaly jako subkapitoly).
+  const treeItems = isVyklad ? [] : items;
+  const hasTreeChildren = kids.length > 0 || treeItems.length > 0;
+  const badgeCount = isVyklad ? kids.length : kids.length + items.length;
+  const leafPuzzle = isVyklad ? items[0] : undefined;
+  const chapterActive =
+    selectedChapterId === chapter.id ||
+    Boolean(leafPuzzle && leafPuzzle.id === selectedPuzzleId);
+  const duplicateFromChapter = () => {
+    const source =
+      leafPuzzle ??
+      puzzlesInChapter(puzzles, chapter.id, true, chapters)[0];
+    if (source) onDuplicatePuzzle(source);
+    else onAddSibling(chapter);
+  };
   return (
     <div
       className="mb-0"
@@ -902,7 +944,7 @@ function ChapterNode({
       <div
         className={cn(
           "group grid grid-cols-[minmax(0,1fr)_auto] items-center gap-1 rounded px-0.5 py-0",
-          selectedChapterId === chapter.id ? "bg-[#81b64c]/15" : "hover:bg-foreground/5",
+          chapterActive ? "bg-[#81b64c]/15" : "hover:bg-foreground/5",
           dropChapterId === chapter.id && "ring-2 ring-[#81b64c] bg-[#81b64c]/20",
         )}
       >
@@ -916,7 +958,7 @@ function ChapterNode({
             indeterminate={branchSome}
             onToggle={() => onToggleChapterPuzzles(chapter.id)}
           />
-          {kids.length > 0 || items.length > 0 ? (
+          {hasTreeChildren ? (
             <button
               type="button"
               className="shrink-0 text-muted-foreground"
@@ -957,29 +999,47 @@ function ChapterNode({
               onClick={() => onSelectChapter(chapter.id)}
             >
               {chapter.title}
-              {kids.length + items.length > 0 ? (
+              {badgeCount > 0 ? (
                 <span className="ml-2 text-[12px] text-muted-foreground">
-                  {kids.length + items.length}
+                  {badgeCount}
                 </span>
               ) : null}
             </button>
           )}
         </div>
         <div className="flex shrink-0 items-center gap-0.5">
-          {showVykladChapterPluses ? (
+          {isVyklad ? (
             <IconBtn
-              title="Podkapitola · stejné o úroveň níž"
-              onClick={() => onAddChild(chapter)}
+              title="Podkapitola · nesting o úroveň níž"
+              onClick={(event) => {
+                event.stopPropagation();
+                onAddChild(chapter, leafPuzzle);
+              }}
             >
               <Plus className="size-3" />
             </IconBtn>
-          ) : !isVyklad && selectedChapterId === chapter.id ? (
-            <IconBtn title="Nová úloha" onClick={() => onNewPuzzle(chapter.id)}>
+          ) : (
+            <IconBtn
+              title="Nová úloha"
+              onClick={(event) => {
+                event.stopPropagation();
+                setOpen((current) => {
+                  const next = { ...current, [chapter.id]: true };
+                  let id: string | null = chapter.parentId;
+                  while (id) {
+                    next[id] = true;
+                    id =
+                      chapters.find((item) => item.id === id)?.parentId ??
+                      null;
+                  }
+                  return next;
+                });
+                onNewPuzzle(chapter.id);
+              }}
+            >
               <Plus className="size-3" />
             </IconBtn>
-          ) : !isVyklad ? (
-            <span className="inline-block w-5 shrink-0" aria-hidden />
-          ) : null}
+          )}
           <button
             type="button"
             title={isVyklad ? "Výklad" : "Cvičení"}
@@ -999,7 +1059,7 @@ function ChapterNode({
           <div
             className={cn(
               "items-center",
-              selectedChapterId === chapter.id
+              chapterActive || selectedChapterId === chapter.id
                 ? "flex"
                 : "hidden group-hover:flex",
             )}
@@ -1019,14 +1079,27 @@ function ChapterNode({
           >
             <Pencil className="size-3" />
           </IconBtn>
-          {showVykladChapterPluses ? (
+          {isVyklad ? (
             <IconBtn
-              title="Stejná úroveň · hned za"
-              onClick={() => onAddSibling(chapter)}
+              title="Stejná pozice · stejná úroveň · index +1"
+              onClick={(event) => {
+                event.stopPropagation();
+                duplicateFromChapter();
+              }}
             >
               <Plus className="size-3" />
             </IconBtn>
-          ) : null}
+          ) : (
+            <IconBtn
+              title="Podkapitola"
+              onClick={(event) => {
+                event.stopPropagation();
+                onAddChild(chapter);
+              }}
+            >
+              <Plus className="size-3" />
+            </IconBtn>
+          )}
           <IconBtn
             title="Smazat"
             className="ml-1.5"
@@ -1037,7 +1110,7 @@ function ChapterNode({
           </div>
         </div>
       </div>
-      {expanded ? (
+      {expanded && hasTreeChildren ? (
         <div>
           {[
             ...kids.map((child) => ({
@@ -1046,7 +1119,7 @@ function ChapterNode({
               sort: child.sort,
               child,
             })),
-            ...items.map((puzzle) => ({
+            ...treeItems.map((puzzle) => ({
               type: "puzzle" as const,
               id: puzzle.id,
               sort: puzzle.sort ?? 0,
@@ -1113,10 +1186,10 @@ function ChapterNode({
               onRename={() => onRenamePuzzle(row.puzzle)}
               onCancelRename={() => setRenameId(null)}
               onRenameValue={setRenameValue}
-              onAddChild={() => onAddChild(chapter)}
+              onAddChild={() => onDuplicatePuzzle(row.puzzle)}
               onDuplicate={() => onDuplicatePuzzle(row.puzzle)}
               onDelete={() => onDeletePuzzle(row.puzzle)}
-              showCopy={isVyklad}
+              showCopy={false}
               depth={depth + 1}
             />
               ),
@@ -1238,7 +1311,7 @@ function PuzzleRow({
       <div className="flex shrink-0 items-center gap-0.5">
         {showCopy ? (
           <IconBtn
-            title="Podkapitola · stejné o úroveň níž"
+            title="Stejná pozice · stejná úroveň · index +1"
             onClick={() => onAddChild?.()}
           >
             <Plus className="size-3" />
@@ -1276,7 +1349,10 @@ function PuzzleRow({
           <Pencil className="size-3" />
         </IconBtn>
         {showCopy ? (
-          <IconBtn title="Stejná úloha" onClick={() => onDuplicate()}>
+          <IconBtn
+            title="Stejná pozice · stejná úroveň · index +1"
+            onClick={() => onDuplicate()}
+          >
             <Plus className="size-3" />
           </IconBtn>
         ) : null}

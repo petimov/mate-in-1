@@ -48,14 +48,19 @@ import {
   chapterKindOf,
   chapterSideOf,
   childCopyTitle,
+  isBrokenVykladGroupTitle,
   isVykladEditorChapter,
+  isVykladGroupMemberTitle,
   newId,
   nextSort,
+  nextVykladGroupTitle,
   puzzlesInChapter,
   siblingCopyTitle,
   sortChapters,
+  stripVykladGroupSuffix,
   uniqueSlug,
   vykladGroupChapters,
+  vykladGroupParentId,
   withMateSubchapters,
   type Chapter,
   type Curriculum,
@@ -453,14 +458,41 @@ export function AdminPuzzleForm() {
     await persistPuzzle(next, next.chapterId ?? null, next.sort ?? 0);
   }
 
+  function puzzleWithLiveForm(puzzle: Puzzle): Puzzle {
+    if (form.id !== puzzle.id) return puzzle;
+    return {
+      ...puzzle,
+      title: form.title.trim() || puzzle.title,
+      fen: form.fen.trim() || puzzle.fen,
+      kind: form.kind,
+      moves: form.moves.length
+        ? form.moves.map(normalizeUci).filter(Boolean)
+        : puzzle.moves,
+      squares:
+        form.kind === "squares"
+          ? parseSquares(form.squares)
+          : puzzle.squares,
+      theme: form.theme.trim() || puzzle.theme,
+      level: form.level.trim() || puzzle.level,
+      hint: form.hint.trim() || puzzle.hint,
+      source: form.source.trim() || puzzle.source,
+      explanation: form.explanation.trim() || puzzle.explanation,
+      videoUrl: form.videoUrl.trim() || puzzle.videoUrl,
+      wrongReplies: form.wrongReplies,
+      markup: form.markup,
+    };
+  }
+
   async function duplicatePuzzle(puzzle: Puzzle) {
-    const leafId = puzzle.chapterId ?? selectedChapterId;
+    const source = puzzleWithLiveForm(puzzle);
+    const leafId = source.chapterId ?? selectedChapterId;
     const leaf = curriculum.chapters.find((item) => item.id === leafId);
     if (!leaf) {
       setStatus("Stejná úloha potřebuje kapitolu.");
       return;
     }
-    const groupParentId = leaf.parentId;
+    // Group = sourozenci Pn pod nadkapitolou (ne S# pod P#).
+    const groupParentId = vykladGroupParentId(curriculum.chapters, leaf.id);
     if (!groupParentId) {
       setStatus("Stejná úloha potřebuje nadkapitolu (group).");
       return;
@@ -473,48 +505,78 @@ export function AdminPuzzleForm() {
       return;
     }
 
-    const siblings = vykladGroupChapters(curriculum.chapters, leaf.id);
+    if (!source.fen.trim() || !isValidFen(source.fen)) {
+      setStatus("Nejdřív ulož platnou pozici (FEN), pak Stejná úloha.");
+      return;
+    }
+
+    // Člen groupy = kapitola přímo pod groupParent (P1/P2…).
+    // S# pod P# → ber P#. S# pod „P1 2“ → ber sourozený Pn (nebo povýš S#).
+    let memberLeaf = leaf;
+    if (/S\d+\s*$/i.test(leaf.title) && leaf.parentId) {
+      const parent = curriculum.chapters.find(
+        (item) => item.id === leaf.parentId,
+      );
+      if (parent && isVykladGroupMemberTitle(parent.title)) {
+        memberLeaf = parent;
+      } else if (parent && isBrokenVykladGroupTitle(parent.title)) {
+        const siblingPn = childChapters(
+          curriculum.chapters,
+          parent.id,
+          parent.courseId,
+        ).find((item) => isVykladGroupMemberTitle(item.title));
+        memberLeaf = siblingPn ?? leaf;
+      }
+    }
+
+    const siblings = vykladGroupChapters(curriculum.chapters, memberLeaf.id);
     const inGroup = siblings.length >= 2;
-    const usedTitles = [
-      ...siblings.map((item) => item.title),
-      ...puzzles
-        .filter((item) =>
-          siblings.some((sib) => sib.id === item.chapterId),
-        )
-        .map((item) => item.title),
-    ];
+    const usedTitles = siblings.map((item) => item.title);
+    const baseTitle =
+      stripVykladGroupSuffix(groupParent.title) || groupParent.title.trim();
 
     let chaptersNext = curriculum.chapters;
-    // První klik mimo group: zajisti P1 název aktuální kapitoly.
-    if (!inGroup && !/P\d+\s*$/.test(leaf.title)) {
-      const p1 = childCopyTitle(groupParent.title, usedTitles);
+    // Flatten: všichni Pn (i vnoření pod „P1 2“ / S#) → přímo pod nadkapitolu.
+    const memberIds = new Set(siblings.map((item) => item.id));
+    if (isVykladGroupMemberTitle(memberLeaf.title)) {
+      memberIds.add(memberLeaf.id);
+    }
+    chaptersNext = chaptersNext.map((item) =>
+      memberIds.has(item.id) && item.parentId !== groupParent.id
+        ? { ...item, parentId: groupParent.id }
+        : item,
+    );
+
+    // První klik: přejmenuj aktuální list na „… P1“ (stejná úroveň).
+    if (!inGroup && !isVykladGroupMemberTitle(memberLeaf.title)) {
+      const p1 = nextVykladGroupTitle(baseTitle, usedTitles);
       chaptersNext = chaptersNext.map((item) =>
-        item.id === leaf.id
+        item.id === memberLeaf.id
           ? {
               ...item,
+              parentId: groupParent.id,
               title: p1,
               slug: uniqueSlug(
                 p1,
                 chaptersNext
-                  .filter((c) => c.id !== leaf.id)
+                  .filter((c) => c.id !== memberLeaf.id)
                   .map((c) => c.slug),
               ),
             }
           : item,
       );
       usedTitles.push(p1);
-    } else if (!usedTitles.includes(leaf.title)) {
-      usedTitles.push(leaf.title);
     }
 
-    const sourceTitle =
-      chaptersNext.find((item) => item.id === leaf.id)?.title ?? leaf.title;
-    // Další člen groupy: P2, P3… (sibling číslo z aktuálního / P1).
-    const nextTitle = siblingCopyTitle(sourceTitle, usedTitles);
-
-    const lastSort = siblings.reduce(
+    const nextTitle = nextVykladGroupTitle(baseTitle, usedTitles);
+    const memberSiblings = childChapters(
+      chaptersNext,
+      groupParent.id,
+      groupParent.courseId,
+    ).filter((item) => isVykladGroupMemberTitle(item.title));
+    const lastSort = memberSiblings.reduce(
       (max, item) => Math.max(max, item.sort),
-      leaf.sort,
+      memberLeaf.sort,
     );
     const extra: Chapter = {
       id: newId(),
@@ -528,8 +590,8 @@ export function AdminPuzzleForm() {
       ),
       title: nextTitle,
       sort: lastSort + 1,
-      kind: chapterKindOf(leaf),
-      side: leaf.side ?? chapterSideOf(curriculum.chapters, leaf.id),
+      kind: chapterKindOf(memberLeaf),
+      side: memberLeaf.side ?? chapterSideOf(curriculum.chapters, memberLeaf.id),
     };
     const label = `Stejná úloha „${nextTitle}“`;
     commitHistory(label);
@@ -546,9 +608,10 @@ export function AdminPuzzleForm() {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        ...puzzleToSaveBody(puzzle),
+        ...puzzleToSaveBody(source),
         id: undefined,
         title: nextTitle,
+        fen: source.fen.trim(),
         chapterId: extra.id,
         sort: 0,
         allowEmptyMoves: true,
@@ -561,7 +624,15 @@ export function AdminPuzzleForm() {
       setStatus(data.error ?? "Kopii nešlo uložit.");
       return;
     }
-    const created = data.puzzle;
+    const created = {
+      ...data.puzzle,
+      fen: data.puzzle.fen?.trim() || source.fen.trim(),
+      moves: data.puzzle.moves?.length ? data.puzzle.moves : source.moves,
+      markup: data.puzzle.markup ?? source.markup,
+      wrongReplies: data.puzzle.wrongReplies ?? source.wrongReplies,
+      explanation: data.puzzle.explanation ?? source.explanation,
+      chapterId: extra.id,
+    };
     setPuzzles((current) => {
       const next = [...current, created];
       puzzlesRef.current = next;
@@ -837,6 +908,122 @@ export function AdminPuzzleForm() {
     if (stepReset === "before") setMarkupPhase("before");
   }
 
+  /** Cvičení: hned draft do DB + strom. Výklad/source: seed form (kopie). */
+  async function createNewPuzzle(
+    chapterId: string,
+    titleHint?: string,
+    sourcePuzzle?: Puzzle,
+  ) {
+    setSelectedChapterId(chapterId);
+    const chapter = curriculum.chapters.find((item) => item.id === chapterId);
+    const vyklad = !!chapter && chapterKindOf(chapter) === "vyklad";
+
+    if (vyklad || sourcePuzzle) {
+      const live =
+        sourcePuzzle && form.id === sourcePuzzle.id
+          ? puzzleWithLiveForm(sourcePuzzle)
+          : sourcePuzzle;
+      let seed = emptyForm();
+      if (live) {
+        seed = formFromPuzzle(live);
+      } else if (vyklad) {
+        const fromForm =
+          form.fen.trim() &&
+          isValidFen(form.fen) &&
+          (form.chapterId === chapterId ||
+            curriculum.chapters.some(
+              (item) =>
+                item.id === chapterId && item.parentId === form.chapterId,
+            ))
+            ? form
+            : null;
+        if (fromForm) {
+          seed = {
+            ...emptyForm(),
+            fen: form.fen,
+            moves: form.moves,
+            move: form.move,
+            kind: form.kind,
+            squares: form.squares,
+            markup: clonePuzzleMarkup(form.markup),
+            wrongReplies: form.wrongReplies.map((reply) => ({
+              ...reply,
+              markup: reply.markup
+                ? cloneBoardMarkup(reply.markup)
+                : undefined,
+            })),
+            explanation: form.explanation,
+            theme: form.theme,
+            level: form.level,
+            hint: form.hint,
+            source: form.source,
+          };
+        }
+      }
+      const next = {
+        ...seed,
+        id: "",
+        chapterId,
+        title: titleHint?.trim() || autoPuzzleTitle(chapterId),
+        sort: 0,
+      };
+      setForm(next);
+      setSavedPrint(formFingerprint(next));
+      setBoardEpoch((n) => n + 1);
+      setWrongEdit(null);
+      setWrongHover(null);
+      setLinePly(0);
+      setSetupOpen(true);
+      setStatus(null);
+      if (stepReset === "before") setMarkupPhase("before");
+      return;
+    }
+
+    const title = titleHint?.trim() || autoPuzzleTitle(chapterId);
+    const sort = nextSort(
+      puzzlesRef.current.filter(
+        (item) => (item.chapterId ?? null) === chapterId,
+      ),
+    );
+    // Draft: prázdný FEN (ne EMPTY_SETUP — chess.js / stará validace to brala jako chybu).
+    const label = "Nová úloha";
+    commitHistory(label);
+    const res = await fetch("/api/puzzles", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        title,
+        fen: "",
+        kind: "move",
+        moves: [],
+        allowEmptyMoves: true,
+        chapterId,
+        sort,
+      }),
+    });
+    const data = (await res.json()) as { error?: string; puzzle?: Puzzle };
+    if (!res.ok || !data.puzzle) {
+      dropLastHistory(label);
+      setStatus(data.error ?? "Úlohu nešlo vytvořit.");
+      return;
+    }
+    const created: Puzzle = {
+      ...data.puzzle,
+      title: data.puzzle.title?.trim() || title,
+      fen: data.puzzle.fen?.trim() || "",
+      chapterId,
+      sort,
+    };
+    setPuzzles((current) => {
+      const next = [...current, created];
+      puzzlesRef.current = next;
+      return next;
+    });
+    loadPuzzle(created);
+    setBoardEpoch((n) => n + 1);
+    setSetupOpen(true);
+  }
+
   function toggleSquare(square: string) {
     const next = parseSquares(form.squares);
     const set = new Set(next);
@@ -970,7 +1157,7 @@ export function AdminPuzzleForm() {
           : reply,
       ),
       markup: form.markup,
-      allowEmptyMoves: isVyklad,
+      allowEmptyMoves: true,
       chapterId: form.chapterId,
       sort:
         form.id && form.chapterId === puzzles.find((item) => item.id === form.id)?.chapterId
@@ -1316,8 +1503,38 @@ export function AdminPuzzleForm() {
               onSelectCourse={setCourseId}
               onSelectChapter={(id) => {
                 setSelectedChapterId(id);
+                if (!id) return;
+                const chapter = curriculum.chapters.find((item) => item.id === id);
+                const direct = puzzlesInChapter(
+                  puzzlesRef.current,
+                  id,
+                  false,
+                  curriculum.chapters,
+                );
+                if (chapter && chapterKindOf(chapter) === "vyklad") {
+                  if (direct[0]) {
+                    loadPuzzle(direct[0]);
+                    return;
+                  }
+                }
+                // Prázdná kapitola (nová cvičení) → čistý form, ne kopie poslední úlohy.
+                if (direct.length === 0) {
+                  const blank = { ...emptyForm(), chapterId: id };
+                  setForm(blank);
+                  setSavedPrint(formFingerprint(blank));
+                  setBoardEpoch((n) => n + 1);
+                  setLinePly(0);
+                  setWrongEdit(null);
+                  setWrongHover(null);
+                  setStatus(null);
+                  return;
+                }
                 setForm((current) =>
-                  current.id ? current : { ...current, chapterId: id },
+                  current.chapterId === id && current.id
+                    ? current
+                    : current.id
+                      ? current
+                      : { ...current, chapterId: id },
                 );
               }}
               onSelectPuzzle={loadPuzzle}
@@ -1325,21 +1542,8 @@ export function AdminPuzzleForm() {
               onMovePuzzle={(puzzleId, chapterId, beforeId) =>
                 void onMovePuzzle(puzzleId, chapterId, beforeId)
               }
-              onNewPuzzle={(chapterId, titleHint) => {
-                setSelectedChapterId(chapterId);
-                const next = {
-                  ...emptyForm(),
-                  chapterId,
-                  title: titleHint?.trim() || autoPuzzleTitle(chapterId),
-                };
-                setForm(next);
-                setSavedPrint(formFingerprint(next));
-                setWrongEdit(null);
-                setWrongHover(null);
-                setLinePly(0);
-                setSetupOpen(false);
-                setStatus(null);
-                if (stepReset === "before") setMarkupPhase("before");
+              onNewPuzzle={(chapterId, titleHint, sourcePuzzle) => {
+                void createNewPuzzle(chapterId, titleHint, sourcePuzzle);
               }}
               onDeletePuzzles={(ids) => void onDeletePuzzles(ids)}
               onDeleteSubtree={(ids, label) => void onDeleteSubtree(ids, label)}

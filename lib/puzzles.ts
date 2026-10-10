@@ -327,28 +327,29 @@ export function isPuzzleComplete(puzzle: Puzzle): boolean {
     : Boolean(puzzle.moves[0]);
 }
 
+/** Prázdná deska — setup draft; chess.js ji odmítá (chybí králové). */
+function isEmptyBoardFen(fen: string): boolean {
+  return (fen.trim().split(/\s+/)[0] ?? "") === "8/8/8/8/8/8/8/8";
+}
+
 export function validatePuzzleInput(input: PuzzleInput): string | null {
-  const title = input.title.trim();
   const fen = input.fen.trim();
   const kind: PuzzleKind = input.kind === "squares" ? "squares" : "move";
   const squares = parseSquares(input.squares);
   const moves = input.moves.map(normalizeUci).filter(Boolean);
 
-  if (!title || !fen) {
-    return "Název a FEN jsou povinné.";
-  }
-  if (!isValidFen(fen)) {
+  // Název i FEN můžou být prázdné / prázdná deska (draft). Jinak platný FEN.
+  if (fen && !isValidFen(fen) && !isEmptyBoardFen(fen)) {
     return "Neplatný FEN.";
   }
   if (kind === "squares") {
-    if (squares.length === 0) {
+    if (fen && squares.length === 0) {
       return "Úloha na pole potřebuje aspoň jedno správné pole.";
     }
     return null;
   }
   if (moves.length === 0) {
-    if (input.allowEmptyMoves) return null;
-    return "Úloha na tah potřebuje zahrát řešení.";
+    return null;
   }
   if (moves.some((move) => !/^[a-h][1-8][a-h][1-8][qrbn]?$/.test(move))) {
     return "Neplatné řešení. Zahraj tah na šachovnici.";

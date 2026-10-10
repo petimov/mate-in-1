@@ -386,7 +386,91 @@ export function childCopyTitle(parent: string, used: string[]): string {
   return uniqueCopyTitle(`${parent.trimEnd()} P1`, used);
 }
 
-/** Sibling výklad kapitoly pod stejným parentem = group pozic (P1…Pn). */
+/** Rozbitý uniqueCopyTitle z Pn: „…P1 2“. */
+export function isBrokenVykladGroupTitle(title: string): boolean {
+  return /P\d+\s+\d+\s*$/i.test(title);
+}
+
+/** Základ názvu groupy bez trailing P# / S# / čísla nadkapitoly. */
+export function stripVykladGroupSuffix(title: string): string {
+  return title
+    .replace(/\s*S\d+\s*$/i, "")
+    .replace(/\s*P\d+(?:\s+\d+)?\s*$/i, "")
+    .replace(/\s+\d+\s*$/, "")
+    .trimEnd();
+}
+
+/** Člen groupy = „… Pn“ (ne S#, ne „P1 2“). */
+export function isVykladGroupMemberTitle(title: string): boolean {
+  return /P\d+\s*$/i.test(title) && !/S\d+\s*$/i.test(title);
+}
+
+/** Další „… P1/P2…“ pod nadkapitolou groupy. */
+export function nextVykladGroupTitle(
+  groupParentTitle: string,
+  used: string[],
+): string {
+  const base =
+    stripVykladGroupSuffix(groupParentTitle) || groupParentTitle.trim();
+  const taken = new Set(used);
+  let max = 0;
+  const re = new RegExp(
+    `^${base.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*P(\\d+)\\s*$`,
+    "i",
+  );
+  for (const title of used) {
+    const match = title.match(re);
+    if (match) max = Math.max(max, Number(match[1]));
+  }
+  let next = `${base} P${max + 1}`;
+  while (taken.has(next)) {
+    max += 1;
+    next = `${base} P${max + 1}`;
+  }
+  return next;
+}
+
+function isVykladGroupShellTitle(title: string): boolean {
+  return (
+    isVykladGroupMemberTitle(title) || isBrokenVykladGroupTitle(title)
+  );
+}
+
+/**
+ * Nadkapitola groupy = parent nad Pn (případně nad S#→Pn / „P1 2“ shell).
+ * Nested Pn / rozbité „P1 2“ se prolezou nahoru.
+ */
+export function vykladGroupParentId(
+  chapters: Chapter[],
+  chapterId: string | null | undefined,
+): string | null {
+  if (!chapterId) return null;
+  let chapter = chapters.find((item) => item.id === chapterId);
+  if (!chapter) return null;
+
+  // S# pod Pn / „P1 2“ → začni od toho parentu
+  if (/S\d+\s*$/i.test(chapter.title) && chapter.parentId) {
+    const parent = chapters.find((item) => item.id === chapter.parentId);
+    if (parent && isVykladGroupShellTitle(parent.title)) {
+      chapter = parent;
+    }
+  }
+
+  // Vylez z vnořených Pn / „P1 2“ nahoru k nadkapitole
+  while (chapter.parentId && isVykladGroupShellTitle(chapter.title)) {
+    const parent = chapters.find((item) => item.id === chapter!.parentId);
+    if (!parent) break;
+    if (isVykladGroupShellTitle(parent.title)) {
+      chapter = parent;
+      continue;
+    }
+    return parent.id;
+  }
+
+  return chapter.parentId;
+}
+
+/** Všichni Pn členové groupy (i omylem vnoření pod shell). */
 export function vykladGroupChapters(
   chapters: Chapter[],
   chapterId: string | null | undefined,
@@ -394,12 +478,32 @@ export function vykladGroupChapters(
   if (!chapterId) return [];
   const chapter = chapters.find((item) => item.id === chapterId);
   if (!chapter) return [];
-  if (!chapter.parentId) {
-    return chapterKindOf(chapter) === "vyklad" ? [chapter] : [];
+  const parentId = vykladGroupParentId(chapters, chapterId);
+  if (!parentId) {
+    return chapterKindOf(chapter) === "vyklad" &&
+      isVykladGroupMemberTitle(chapter.title)
+      ? [chapter]
+      : chapterKindOf(chapter) === "vyklad"
+        ? [chapter]
+        : [];
   }
-  return childChapters(chapters, chapter.parentId, chapter.courseId).filter(
-    (item) => chapterKindOf(item) === "vyklad",
-  );
+  const parent = chapters.find((item) => item.id === parentId);
+  const courseId = parent?.courseId ?? chapter.courseId;
+  const out: Chapter[] = [];
+  const walk = (id: string) => {
+    for (const child of childChapters(chapters, id, courseId)) {
+      if (chapterKindOf(child) !== "vyklad") continue;
+      if (isVykladGroupMemberTitle(child.title)) {
+        out.push(child);
+        continue;
+      }
+      if (isBrokenVykladGroupTitle(child.title) || /S\d+\s*$/i.test(child.title)) {
+        walk(child.id);
+      }
+    }
+  };
+  walk(parentId);
+  return out;
 }
 
 export function isVykladGroup(
