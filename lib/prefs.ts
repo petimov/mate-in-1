@@ -51,7 +51,9 @@ export function prefsFromMetadata(meta: unknown): Partial<Prefs> {
     "intervalUnit" in data ||
     "lessonMode" in data ||
     "showMarkup" in data ||
-    "wrongSnap" in data;
+    "wrongSnap" in data ||
+    "wrongClearCount" in data ||
+    "penaltySeconds" in data;
   if (hasReview) {
     const review = normalizeReviewPrefs(data);
     next.goodIntervals = review.goodIntervals;
@@ -61,6 +63,8 @@ export function prefsFromMetadata(meta: unknown): Partial<Prefs> {
     next.lessonMode = review.lessonMode;
     next.showMarkup = review.showMarkup;
     next.wrongSnap = review.wrongSnap;
+    next.wrongClearCount = review.wrongClearCount;
+    next.penaltySeconds = review.penaltySeconds;
   }
   return next;
 }

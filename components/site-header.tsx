@@ -5,7 +5,6 @@ import { useEffect, useState } from "react";
 
 import { useAuth } from "@/components/auth-provider";
 import { KnightMark } from "@/components/knight-mark";
-import { ThemeToggle } from "@/components/theme-toggle";
 import { UserAvatar } from "@/components/user-avatar";
 import { SCHOOL } from "@/lib/school";
 import { useClientPathname } from "@/lib/use-client-path";
@@ -14,6 +13,7 @@ import { cn } from "@/lib/utils";
 
 const LINKS = [
   { href: "/ulohy", label: "Jednotažky" },
+  { href: "/ulohy/motivace", label: "Motivace" },
   { href: "/ulohy/trenink", label: "Trénink" },
 ];
 
@@ -83,7 +83,8 @@ export function SiteHeader() {
               : link.href === "/ulohy"
                 ? pathname === "/ulohy" ||
                   (pathname.startsWith("/ulohy/") &&
-                    !pathname.startsWith("/ulohy/trenink"))
+                    !pathname.startsWith("/ulohy/trenink") &&
+                    !pathname.startsWith("/ulohy/motivace"))
                 : pathname === link.href ||
                   pathname.startsWith(`${link.href}/`);
             return (
@@ -131,7 +132,6 @@ export function SiteHeader() {
           </div>
         ) : (
           <div className="flex shrink-0 items-center justify-end gap-1">
-            <ThemeToggle />
             {ready ? (
               user ? (
                 <Link

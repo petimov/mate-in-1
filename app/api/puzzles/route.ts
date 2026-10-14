@@ -55,6 +55,7 @@ export async function POST(request: Request) {
     chapterId: body.chapterId ?? null,
     sort: typeof body.sort === "number" ? body.sort : 0,
     allowEmptyMoves: Boolean(body.allowEmptyMoves),
+    tags: body.tags,
   };
   const invalid = validatePuzzleInput(input);
   if (invalid) {

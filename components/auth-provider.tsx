@@ -11,6 +11,7 @@ import {
 } from "react";
 import type { User } from "@supabase/supabase-js";
 
+import { setPracticeUser } from "@/lib/practice-store";
 import { setSrsUser } from "@/lib/srs";
 import { createBrowserSupabase } from "@/lib/supabase";
 
@@ -53,7 +54,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const id = next?.id ?? null;
       if (srsUserId === id) return;
       srsUserId = id;
-      await setSrsUser(id);
+      await Promise.all([setSrsUser(id), setPracticeUser(id)]);
     }
 
     async function boot() {
@@ -107,7 +108,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const signOut = useCallback(async () => {
     const supabase = createBrowserSupabase();
     await supabase?.auth.signOut();
-    await setSrsUser(null);
+    await Promise.all([setSrsUser(null), setPracticeUser(null)]);
   }, []);
 
   const value = useMemo(

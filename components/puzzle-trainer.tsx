@@ -25,34 +25,49 @@ import {
   chapterParam,
   chapterScopeIds,
   findCourse,
+  puzzlesInChapter,
   resolveChapterPath,
   sortPuzzles,
   withMateSubchapters,
   type Curriculum,
 } from "@/lib/curriculum";
 import { isEmptyBoardMarkup, recolorGreenDefense, visibleMarkup } from "@/lib/markup";
-import { puzzleKind } from "@/lib/puzzles";
-import type { Puzzle, PuzzleKind, WrongReply } from "@/lib/types";
-import { resolveWrongReplyText } from "@/lib/wrong-reply-codes";
-import { matchWrongReply } from "@/lib/wrong-replies";
 import {
-  buildTrainQueue,
-  formatSrsCard,
-  getSrsSnapshot,
-  gradePuzzle,
-} from "@/lib/srs";
+  clearChapterWip,
+  finishChapterRun,
+  formatPracticeDuration,
+  getPracticeSnapshot,
+  noteWrongTrainResult,
+  recordChapterFail,
+  startChapterWip,
+  updateChapterWip,
+  wrongPoolIds,
+  type ChapterAnswer,
+} from "@/lib/practice-store";
+import { puzzleKind } from "@/lib/puzzles";
 import {
   filterLessonPuzzles,
   isFirstPass,
   orderSessionPuzzles,
   sessionShouldShuffle,
 } from "@/lib/queue-order";
+import {
+  buildTrainQueue,
+  formatSrsCard,
+  getSrsSnapshot,
+  gradePuzzle,
+} from "@/lib/srs";
+import type { Puzzle, PuzzleKind, WrongReply } from "@/lib/types";
+import { resolveWrongReplyText } from "@/lib/wrong-reply-codes";
+import { matchWrongReply } from "@/lib/wrong-replies";
 
 function kindFromWindow(): PuzzleKind | "all" {
   if (typeof window === "undefined") return "all";
   const kind = new URLSearchParams(window.location.search).get("kind");
   return kind === "squares" || kind === "move" ? kind : "all";
 }
+
+export type PracticeMode = "chapter" | "wrong";
 
 type PuzzleTrainerProps = {
   initialCurriculum?: Curriculum;
@@ -63,6 +78,9 @@ type PuzzleTrainerProps = {
   reviewOnly?: boolean;
   courseSlug?: string;
   chapterSlug?: string[];
+  practiceMode?: PracticeMode | null;
+  practiceChapterId?: string;
+  resumeWip?: boolean;
 };
 
 export function PuzzleTrainer({
@@ -74,12 +92,16 @@ export function PuzzleTrainer({
   reviewOnly = false,
   courseSlug,
   chapterSlug,
+  practiceMode = null,
+  practiceChapterId,
+  resumeWip = false,
 }: PuzzleTrainerProps) {
   const { user, ready: authReady } = useAuth();
   const { prefs, hydrated: prefsReady } = useReviewPrefs();
   const lessonMode = prefs.lessonMode;
   const slugs = chapterParam(chapterSlug);
   const startKind = kindFromWindow();
+  const isPractice = practiceMode === "chapter" || practiceMode === "wrong";
 
   const [puzzles, setPuzzles] = useState<Puzzle[]>(initialPuzzles ?? []);
   const [curriculum, setCurriculum] = useState<Curriculum>(
@@ -96,9 +118,17 @@ export function PuzzleTrainer({
   const [srsNote, setSrsNote] = useState<string | null>(null);
   const [srsReady, setSrsReady] = useState(false);
   const [lockedOrder, setLockedOrder] = useState(false);
+  const [paused, setPaused] = useState(false);
+  const [elapsedMs, setElapsedMs] = useState(0);
+  const [penaltyMs, setPenaltyMs] = useState(0);
+  const [answers, setAnswers] = useState<ChapterAnswer[]>([]);
+  const [chapterDone, setChapterDone] = useState(false);
   const squaresRef = useRef<SquaresBoardHandle>(null);
   const failedRef = useRef(false);
   const recordedRef = useRef<string | null>(null);
+  const puzzleTickRef = useRef(Date.now());
+  const answersRef = useRef<ChapterAnswer[]>([]);
+  answersRef.current = answers;
 
   useEffect(() => {
     if (!wrongNote) return;
@@ -187,6 +217,66 @@ export function PuzzleTrainer({
   useEffect(() => {
     if (!authReady || !prefsReady) return;
     const items = sourceRef.current;
+    const practice = getPracticeSnapshot();
+
+    if (practiceMode === "chapter" && practiceChapterId) {
+      const chapterItems =
+        items.length > 0
+          ? items
+          : puzzlesInChapter(
+              puzzles,
+              practiceChapterId,
+              false,
+              curriculum.chapters,
+            );
+      const wip =
+        resumeWip && practice.wip?.chapterId === practiceChapterId
+          ? practice.wip
+          : null;
+      const ordered = wip
+        ? wip.puzzleIds
+            .map((id) => chapterItems.find((item) => item.id === id))
+            .filter((item): item is Puzzle => Boolean(item))
+        : sortPuzzles(chapterItems);
+      if (!wip) startChapterWip(
+        practiceChapterId,
+        ordered.map((item) => item.id),
+      );
+      setLockedOrder(true);
+      setQueue(ordered);
+      setSessionTotal(ordered.length);
+      setIndex(wip?.index ?? 0);
+      setElapsedMs(wip?.elapsedMs ?? 0);
+      setPenaltyMs(wip?.penaltyMs ?? 0);
+      setAnswers(wip?.answers ?? []);
+      setChapterDone(false);
+      setPaused(false);
+      setPly(0);
+      failedRef.current = false;
+      recordedRef.current = null;
+      setSrsNote(null);
+      setSrsReady(true);
+      puzzleTickRef.current = Date.now();
+      return;
+    }
+
+    if (practiceMode === "wrong") {
+      const ids = new Set(wrongPoolIds(practice));
+      const ordered = sortPuzzles(items.filter((item) => ids.has(item.id)));
+      setLockedOrder(false);
+      setQueue(ordered);
+      setSessionTotal(ordered.length);
+      setIndex(0);
+      setPly(0);
+      setChapterDone(false);
+      setPaused(false);
+      failedRef.current = false;
+      recordedRef.current = null;
+      setSrsNote(null);
+      setSrsReady(true);
+      return;
+    }
+
     const map = getSrsSnapshot();
     const queued = user
       ? buildTrainQueue(items, map, Date.now(), reviewOnly)
@@ -223,10 +313,40 @@ export function PuzzleTrainer({
     chapter?.kind,
     curriculum.chapters,
     lessonMode,
+    practiceChapterId,
+    practiceMode,
     prefsReady,
+    puzzles,
+    resumeWip,
     reviewOnly,
     sourceKey,
     user,
+  ]);
+
+  useEffect(() => {
+    if (practiceMode !== "chapter" || paused || chapterDone) return;
+    const timer = window.setInterval(() => {
+      setElapsedMs((current) => current + 250);
+    }, 250);
+    return () => window.clearInterval(timer);
+  }, [chapterDone, paused, practiceMode]);
+
+  useEffect(() => {
+    if (practiceMode !== "chapter" || !practiceChapterId || chapterDone) return;
+    updateChapterWip({
+      index,
+      elapsedMs,
+      penaltyMs,
+      answers,
+    });
+  }, [
+    answers,
+    chapterDone,
+    elapsedMs,
+    index,
+    penaltyMs,
+    practiceChapterId,
+    practiceMode,
   ]);
 
   useEffect(() => {
@@ -289,26 +409,61 @@ export function PuzzleTrainer({
     setPly((current) => Math.min(current + 1, maxPlyRef.current));
   }, []);
 
-  const onWrongMove = useCallback((uci: string) => {
-    const current = puzzleRef.current;
-    if (!current) return;
+  const markFail = useCallback(() => {
+    if (failedRef.current) return;
     failedRef.current = true;
-    setWrongHit(
-      matchWrongReply(current.wrongReplies, {
-        uci,
-        fen: lineRef.current.fens[plyRef.current] ?? current.fen,
-      }) ?? null,
-    );
-  }, []);
+    if (practiceMode === "chapter") {
+      recordChapterFail(prefs.penaltySeconds);
+      setPenaltyMs((current) => current + prefs.penaltySeconds * 1000);
+    }
+  }, [practiceMode, prefs.penaltySeconds]);
 
-  const onWrongSquares = useCallback((squares: string[]) => {
-    const current = puzzleRef.current;
-    if (!current) return;
-    failedRef.current = true;
-    setWrongHit(matchWrongReply(current.wrongReplies, { squares }) ?? null);
-  }, []);
+  const onWrongMove = useCallback(
+    (uci: string) => {
+      const current = puzzleRef.current;
+      if (!current || paused) return;
+      markFail();
+      setWrongHit(
+        matchWrongReply(current.wrongReplies, {
+          uci,
+          fen: lineRef.current.fens[plyRef.current] ?? current.fen,
+        }) ?? null,
+      );
+    },
+    [markFail, paused],
+  );
+
+  const onWrongSquares = useCallback(
+    (squares: string[]) => {
+      const current = puzzleRef.current;
+      if (!current || paused) return;
+      markFail();
+      setWrongHit(matchWrongReply(current.wrongReplies, { squares }) ?? null);
+    },
+    [markFail, paused],
+  );
+
+  const finishChapterIfDone = useCallback(
+    (nextAnswers: ChapterAnswer[]) => {
+      if (!practiceChapterId) return;
+      const best = finishChapterRun({
+        chapterId: practiceChapterId,
+        answers: nextAnswers,
+        elapsedMs,
+        penaltyMs,
+      });
+      setChapterDone(true);
+      setSrsNote(
+        best.perfect
+          ? `Kapitola 100 % · ${formatPracticeDuration(best.elapsedMs)}`
+          : `Hotovo · ${Math.round((best.correct / Math.max(1, best.correct + best.wrong)) * 100)} %`,
+      );
+    },
+    [elapsedMs, penaltyMs, practiceChapterId],
+  );
 
   const onNext = useCallback(() => {
+    if (paused) return;
     if (!atEnd && isSquares) {
       squaresRef.current?.check();
       return;
@@ -318,13 +473,52 @@ export function PuzzleTrainer({
       goToPuzzle((index + 1) % list.length);
       return;
     }
+
+    const current = list[index];
+    const failed = failedRef.current;
+    const puzzleElapsed = Math.max(0, Date.now() - puzzleTickRef.current);
+
+    if (practiceMode === "chapter" && current) {
+      const answer: ChapterAnswer = {
+        puzzleId: current.id,
+        failed,
+        elapsedMs: puzzleElapsed,
+      };
+      const nextAnswers = [...answersRef.current, answer];
+      setAnswers(nextAnswers);
+      const nextQueue = list.filter((_, itemIndex) => itemIndex !== index);
+      setQueue(nextQueue);
+      failedRef.current = false;
+      recordedRef.current = null;
+      setWrongHit(null);
+      setPly(0);
+      puzzleTickRef.current = Date.now();
+      if (nextQueue.length === 0) {
+        finishChapterIfDone(nextAnswers);
+        return;
+      }
+      setIndex(0);
+      return;
+    }
+
+    if (practiceMode === "wrong" && current) {
+      noteWrongTrainResult(current.id, failed);
+      setQueue((currentQueue) =>
+        currentQueue.filter((_, itemIndex) => itemIndex !== index),
+      );
+      failedRef.current = false;
+      recordedRef.current = null;
+      setSrsNote(null);
+      setWrongHit(null);
+      setPly(0);
+      return;
+    }
+
     if (!user) {
       if (list.length === 0) return;
       goToPuzzle((index + 1) % list.length);
       return;
     }
-    const current = list[index];
-    const failed = failedRef.current;
     setQueue((currentQueue) => {
       const next = currentQueue.filter((_, itemIndex) => itemIndex !== index);
       if (failed && current) {
@@ -337,7 +531,17 @@ export function PuzzleTrainer({
     setSrsNote(null);
     setWrongHit(null);
     setPly(0);
-  }, [atEnd, goToPuzzle, index, isSquares, list, user]);
+  }, [
+    atEnd,
+    finishChapterIfDone,
+    goToPuzzle,
+    index,
+    isSquares,
+    list,
+    paused,
+    practiceMode,
+    user,
+  ]);
 
   const onCram = useCallback(() => {
     const items = sourceRef.current;
@@ -370,6 +574,7 @@ export function PuzzleTrainer({
   }, []);
 
   useEffect(() => {
+    if (isPractice) return;
     if (!user || !puzzle || !atEnd) return;
     if (recordedRef.current === puzzle.id) return;
     recordedRef.current = puzzle.id;
@@ -378,13 +583,14 @@ export function PuzzleTrainer({
         if (card) setSrsNote(formatSrsCard(card));
       },
     );
-  }, [atEnd, puzzle, user]);
+  }, [atEnd, isPractice, puzzle, user]);
 
   useEffect(() => {
     setPly(0);
     setWrongHit(null);
-    setSrsNote(null);
-  }, [puzzle?.id]);
+    if (!isPractice) setSrsNote(null);
+    puzzleTickRef.current = Date.now();
+  }, [isPractice, puzzle?.id]);
 
   useEffect(() => {
     function onKey(event: KeyboardEvent) {
@@ -396,28 +602,43 @@ export function PuzzleTrainer({
         target instanceof HTMLSelectElement ||
         target?.isContentEditable;
       if (typing) return;
+      if (paused || chapterDone) return;
       if (!atEnd) return;
       event.preventDefault();
       onNext();
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [atEnd, onNext]);
+  }, [atEnd, chapterDone, onNext, paused]);
 
   const doneToday =
-    Boolean(user) && srsReady && source.length > 0 && list.length === 0;
+    !isPractice &&
+    Boolean(user) &&
+    srsReady &&
+    source.length > 0 &&
+    list.length === 0;
+  const practiceEmpty =
+    isPractice && srsReady && list.length === 0 && !chapterDone;
   const reviewEmpty = Boolean(user) && reviewOnly && doneToday;
-  const footerCopy = reviewEmpty
-    ? "Nic k opakování. Nejdřív studuj kapitolu."
-    : doneToday
-    ? "Hotovo na dnes."
-    : atEnd
-      ? "Hotovo. Mezerník nebo Další."
-      : isSquares
-        ? "Označ pole. Pak Zkontrolovat."
-        : wrongHit && prefs.wrongSnap === "click"
-      ? "Klikni na šachovnici a pokračuj"
-      : "Zahraj tah.";
+  const footerCopy = paused
+    ? "Pauza. Deska je rozmazaná."
+    : chapterDone
+      ? srsNote ?? "Kapitola hotová."
+      : practiceEmpty
+        ? practiceMode === "wrong"
+          ? "Žádné špatné úlohy."
+          : "V kapitole nejsou úlohy."
+        : reviewEmpty
+          ? "Nic k opakování. Nejdřív studuj kapitolu."
+          : doneToday
+            ? "Hotovo na dnes."
+            : atEnd
+              ? "Hotovo. Mezerník nebo Další."
+              : isSquares
+                ? "Označ pole. Pak Zkontrolovat."
+                : wrongHit && prefs.wrongSnap === "click"
+                  ? "Klikni na šachovnici a pokračuj"
+                  : "Zahraj tah.";
 
   return (
     <TrainerControlsProvider>
@@ -430,11 +651,13 @@ export function PuzzleTrainer({
           onFilter={setFilter}
           onSelect={goToPuzzle}
           onShuffle={onShuffle}
-          shuffleLocked={lockedOrder}
+          shuffleLocked={lockedOrder || practiceMode === "chapter"}
           lockHint={
-            lessonMode === "colors"
-              ? "Nejdřív bílé, pak černé."
-              : "Po kapitolách. Naše pořadí."
+            practiceMode === "chapter"
+              ? "Pořadí kapitoly."
+              : lessonMode === "colors"
+                ? "Nejdřív bílé, pak černé."
+                : "Po kapitolách. Naše pořadí."
           }
           title={title ?? chapter?.title ?? "Úlohy"}
           backHref={
@@ -452,10 +675,73 @@ export function PuzzleTrainer({
       </div>
 
       <section className="flex min-h-0 flex-col bg-background">
+        {practiceMode === "chapter" ? (
+          <div className="flex shrink-0 items-center justify-between gap-2 border-b border-border px-4 py-2 text-sm">
+            <span className="tabular-nums text-muted-foreground">
+              {formatPracticeDuration(elapsedMs)}
+              {penaltyMs > 0
+                ? ` · s penalizací ${formatPracticeDuration(elapsedMs + penaltyMs)}`
+                : ""}
+            </span>
+            <div className="flex gap-2">
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() => setPaused((value) => !value)}
+                disabled={chapterDone}
+              >
+                {paused ? "Pokračovat" : "Pauza"}
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  if (!practiceChapterId) return;
+                  clearChapterWip(practiceChapterId);
+                  startChapterWip(
+                    practiceChapterId,
+                    sortPuzzles(sourceRef.current).map((item) => item.id),
+                  );
+                  setAnswers([]);
+                  setElapsedMs(0);
+                  setPenaltyMs(0);
+                  setChapterDone(false);
+                  setPaused(false);
+                  setQueue(sortPuzzles(sourceRef.current));
+                  setSessionTotal(sourceRef.current.length);
+                  setIndex(0);
+                  setPly(0);
+                }}
+              >
+                Znovu
+              </Button>
+            </div>
+          </div>
+        ) : null}
         <div className="flex min-h-0 flex-1 items-center justify-center p-3 sm:p-4">
           <div className="relative w-full max-w-[min(100%,calc(100dvh-11rem))]">
-            {!srsReady || (loading && !puzzle && !doneToday) ? (
+            {!srsReady || (loading && !puzzle && !doneToday && !chapterDone && !practiceEmpty) ? (
               <div className="aspect-square w-full rounded-xl bg-muted/50" />
+            ) : chapterDone ? (
+              <div className="rounded-xl border border-border bg-card p-8 text-center text-sm text-muted-foreground">
+                <p className="text-base font-semibold text-foreground">
+                  {srsNote ?? "Kapitola hotová"}
+                </p>
+                <p className="mt-2">
+                  Průměr{" "}
+                  {formatPracticeDuration(
+                    answers.length ? elapsedMs / answers.length : 0,
+                  )}{" "}
+                  na úlohu
+                </p>
+                <div className="mt-4 flex flex-wrap justify-center gap-2">
+                  <Button asChild variant="outline">
+                    <Link href="/ulohy/motivace">Motivace</Link>
+                  </Button>
+                </div>
+              </div>
             ) : doneToday ? (
               <div className="rounded-xl border border-border bg-card p-8 text-center text-sm text-muted-foreground">
                 {reviewOnly
@@ -473,9 +759,11 @@ export function PuzzleTrainer({
                   )}
                 </div>
               </div>
-            ) : !puzzle || scoped.length === 0 ? (
+            ) : !puzzle || practiceEmpty || scoped.length === 0 ? (
               <div className="rounded-xl border border-border bg-card p-8 text-center text-sm text-muted-foreground">
-                V kapitole nejsou úlohy.
+                {practiceMode === "wrong"
+                  ? "Žádné špatné úlohy k tréninku."
+                  : "V kapitole nejsou úlohy."}
                 <div className="mt-4">
                   <Button asChild variant="outline">
                     <Link
@@ -488,36 +776,47 @@ export function PuzzleTrainer({
                             : "/ulohy")
                       }
                     >
-                      Zpět na kapitoly
+                      Zpět
                     </Link>
                   </Button>
                 </div>
               </div>
             ) : puzzle && isSquares ? (
-              <SquaresBoard
-                key={puzzle.id}
-                ref={squaresRef}
-                fen={puzzle.fen}
-                expectedSquares={puzzle.squares}
-                interactive={!atEnd}
-                onCorrect={onCorrect}
-                onWrong={onWrongSquares}
-                markup={boardMarkup}
-              />
+              <div className={paused ? "pointer-events-none blur-md" : undefined}>
+                <SquaresBoard
+                  key={puzzle.id}
+                  ref={squaresRef}
+                  fen={puzzle.fen}
+                  expectedSquares={puzzle.squares}
+                  interactive={!atEnd && !paused}
+                  onCorrect={onCorrect}
+                  onWrong={onWrongSquares}
+                  markup={boardMarkup}
+                />
+              </div>
             ) : puzzle ? (
-              <ChessboardPlayer
-                key={puzzle.id}
-                positionFen={line.fens[ply] ?? startFen}
-                orientationFen={startFen}
-                lastMove={line.lastMoves[ply] ?? null}
-                interactive={!atEnd}
-                expectedUci={line.plies[ply]?.uci ?? puzzle.moves[0] ?? ""}
-                onCorrect={onCorrect}
-                onWrong={onWrongMove}
-                onRetry={() => setWrongHit(null)}
-                snapMode={prefs.wrongSnap}
-                markup={boardMarkup}
-              />
+              <div className={paused ? "pointer-events-none blur-md" : undefined}>
+                <ChessboardPlayer
+                  key={puzzle.id}
+                  positionFen={line.fens[ply] ?? startFen}
+                  orientationFen={startFen}
+                  lastMove={line.lastMoves[ply] ?? null}
+                  interactive={!atEnd && !paused}
+                  expectedUci={line.plies[ply]?.uci ?? puzzle.moves[0] ?? ""}
+                  onCorrect={onCorrect}
+                  onWrong={onWrongMove}
+                  onRetry={() => setWrongHit(null)}
+                  snapMode={prefs.wrongSnap}
+                  markup={boardMarkup}
+                />
+              </div>
+            ) : null}
+            {paused ? (
+              <div className="absolute inset-0 flex items-center justify-center rounded-xl bg-background/40">
+                <Button type="button" onClick={() => setPaused(false)}>
+                  Pokračovat
+                </Button>
+              </div>
             ) : null}
           </div>
         </div>
@@ -545,7 +844,13 @@ export function PuzzleTrainer({
               ))}
             </select>
           </div>
-          {reviewOnly && doneToday ? (
+          {chapterDone || (isPractice && practiceEmpty) ? (
+            <Button asChild variant="outline" className="shrink-0">
+              <Link href={backHref ?? "/ulohy/motivace"}>
+                {practiceMode ? "Motivace" : "Zpět"}
+              </Link>
+            </Button>
+          ) : reviewOnly && doneToday ? (
             <Button asChild variant="outline" className="shrink-0">
               <Link href="/ulohy">Kapitoly</Link>
             </Button>
@@ -554,7 +859,7 @@ export function PuzzleTrainer({
               type="button"
               className="h-9 w-[9.75rem] shrink-0"
               onClick={doneToday ? onCram : onNext}
-              disabled={!doneToday && !puzzle}
+              disabled={paused || (!doneToday && !puzzle)}
             >
               {doneToday
                 ? "Cvičit znovu"
@@ -598,7 +903,7 @@ export function PuzzleTrainer({
         ) : null}
       </div>
       <AutoNextOnSolve
-        atEnd={atEnd}
+        atEnd={atEnd && !paused && !chapterDone}
         puzzleId={puzzle?.id}
         onNext={onNext}
       />

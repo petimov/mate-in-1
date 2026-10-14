@@ -274,10 +274,12 @@ export function ChapterCatalog({
               Studovat
             </Button>
           )}
+          <Button asChild variant="outline">
+            <Link href="/ulohy/motivace">Motivace</Link>
+          </Button>
           <Button asChild className="bg-[#00d26a] text-black hover:bg-[#00b85c]">
             <Link href={user ? reviewHref : reviewLoginHref}>
-              <RotateCcw className="size-4" />
-              Opakovat
+              <RotateCcw className="size-4" />              Opakovat
               {stats && stats.due > 0 ? (
                 <span className="rounded-full bg-amber-500/15 px-1.5 text-xs text-amber-600 dark:text-amber-400">
                   {stats.due}

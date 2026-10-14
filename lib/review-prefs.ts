@@ -16,6 +16,10 @@ export type ReviewPrefs = {
   lessonMode: LessonMode;
   showMarkup: boolean;
   wrongSnap: WrongSnap;
+  /** Kolikrát správně v wrong-train → pryč z poolu. */
+  wrongClearCount: number;
+  /** +sekundy za fail v chapter-run (čas s penalizací). */
+  penaltySeconds: number;
 };
 
 export const DEFAULT_REVIEW_PREFS: ReviewPrefs = {
@@ -26,6 +30,8 @@ export const DEFAULT_REVIEW_PREFS: ReviewPrefs = {
   lessonMode: "guided",
   showMarkup: true,
   wrongSnap: "auto",
+  wrongClearCount: 2,
+  penaltySeconds: 30,
 };
 
 export function sanitizeLessonMode(raw: unknown): LessonMode {
@@ -114,6 +120,18 @@ export function sanitizeAgainTimes(raw: unknown): number {
   return Math.max(0, Math.min(20, Math.round(n)));
 }
 
+export function sanitizeWrongClearCount(raw: unknown): number {
+  const n = typeof raw === "number" ? raw : Number(raw);
+  if (!Number.isFinite(n)) return DEFAULT_REVIEW_PREFS.wrongClearCount;
+  return Math.max(1, Math.min(10, Math.round(n)));
+}
+
+export function sanitizePenaltySeconds(raw: unknown): number {
+  const n = typeof raw === "number" ? raw : Number(raw);
+  if (!Number.isFinite(n)) return DEFAULT_REVIEW_PREFS.penaltySeconds;
+  return Math.max(0, Math.min(600, Math.round(n)));
+}
+
 export function normalizeReviewPrefs(raw: unknown): ReviewPrefs {
   if (!raw || typeof raw !== "object") return { ...DEFAULT_REVIEW_PREFS };
   const data = raw as Record<string, unknown>;
@@ -135,6 +153,14 @@ export function normalizeReviewPrefs(raw: unknown): ReviewPrefs {
     lessonMode: sanitizeLessonMode(data.lessonMode),
     showMarkup: data.showMarkup === false ? false : true,
     wrongSnap: sanitizeWrongSnap(data.wrongSnap),
+    wrongClearCount:
+      "wrongClearCount" in data
+        ? sanitizeWrongClearCount(data.wrongClearCount)
+        : DEFAULT_REVIEW_PREFS.wrongClearCount,
+    penaltySeconds:
+      "penaltySeconds" in data
+        ? sanitizePenaltySeconds(data.penaltySeconds)
+        : DEFAULT_REVIEW_PREFS.penaltySeconds,
   };
 }
 

@@ -78,6 +78,11 @@ import {
 } from "@/lib/markup";
 import { isUuid, puzzleKind, puzzleToSaveBody } from "@/lib/puzzles";
 import { parseSquares } from "@/lib/squares";
+import {
+  parsePracticeTags,
+  togglePracticeTag,
+  type PracticeTag,
+} from "@/lib/practice-tags";
 import type { Puzzle, PuzzleKind, WrongReply } from "@/lib/types";
 
 function emptyForm() {
@@ -99,6 +104,7 @@ function emptyForm() {
     markup: emptyPuzzleMarkup(),
     chapterId: null as string | null,
     sort: 0,
+    tags: [] as PracticeTag[],
   };
 }
 
@@ -128,6 +134,7 @@ function formFromPuzzle(puzzle: Puzzle): PuzzleForm {
     markup: clonePuzzleMarkup(puzzle.markup),
     chapterId: puzzle.chapterId ?? null,
     sort: puzzle.sort ?? 0,
+    tags: parsePracticeTags(puzzle.tags),
   };
 }
 
@@ -147,6 +154,7 @@ function formFingerprint(form: PuzzleForm): string {
     explanation: form.explanation,
     videoUrl: form.videoUrl,
     wrongReplies: form.wrongReplies,
+    tags: form.tags,
     markup: {
       before: normalizeMarkupFp(form.markup.before),
       after: normalizeMarkupFp(form.markup.after),
@@ -480,6 +488,7 @@ export function AdminPuzzleForm() {
       videoUrl: form.videoUrl.trim() || puzzle.videoUrl,
       wrongReplies: form.wrongReplies,
       markup: form.markup,
+      tags: form.tags,
     };
   }
 
@@ -1158,6 +1167,7 @@ export function AdminPuzzleForm() {
           : reply,
       ),
       markup: form.markup,
+      tags: form.tags,
       allowEmptyMoves: true,
       chapterId: form.chapterId,
       sort:
@@ -2110,6 +2120,33 @@ export function AdminPuzzleForm() {
                   value={form.hint}
                   onChange={(e) => setForm({ ...form, hint: e.target.value })}
                 />
+                  <div className="col-span-2 flex flex-wrap items-center gap-3 px-0.5 text-sm">
+                    <span className="text-muted-foreground">Motivace</span>
+                    {(
+                      [
+                        { id: "Z" as const, label: "Z · procvičení" },
+                        { id: "P" as const, label: "P · políčka" },
+                      ] as const
+                    ).map((item) => (
+                      <label
+                        key={item.id}
+                        className="inline-flex cursor-pointer items-center gap-1.5"
+                      >
+                        <input
+                          type="checkbox"
+                          className="size-3.5 accent-primary"
+                          checked={form.tags.includes(item.id)}
+                          onChange={() =>
+                            setForm({
+                              ...form,
+                              tags: togglePracticeTag(form.tags, item.id),
+                            })
+                          }
+                        />
+                        {item.label}
+                      </label>
+                    ))}
+                  </div>
                     </div>
                   </details>
                   </div>

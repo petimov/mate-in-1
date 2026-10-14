@@ -317,6 +317,7 @@ export function mapPuzzleRow(row: PuzzleRow): Puzzle {
       : packed.markup,
     chapterId,
     sort,
+    tags: packed.tags?.length ? packed.tags : undefined,
   };
 }
 
@@ -378,10 +379,17 @@ export function puzzleRowPayload(input: PuzzleInput) {
     level: input.level?.trim() || null,
     hint: input.hint?.trim() || null,
     source: input.source?.trim() || null,
-    explanation: packExplanation(input.explanation, replies, markup, {
-      chapterId,
-      sort,
-    }, { kind, squares: kind === "squares" ? parseSquares(input.squares) : [] }),
+    explanation: packExplanation(
+      input.explanation,
+      replies,
+      markup,
+      {
+        chapterId,
+        sort,
+      },
+      { kind, squares: kind === "squares" ? parseSquares(input.squares) : [] },
+      input.tags,
+    ),
     video_url: input.videoUrl?.trim() || null,
     wrong_replies: replies,
     markup: serializePuzzleMarkup(markup),
@@ -408,6 +416,7 @@ export function puzzleToSaveBody(puzzle: Puzzle) {
     markup: puzzle.markup,
     chapterId: puzzle.chapterId ?? null,
     sort: puzzle.sort ?? 0,
+    tags: puzzle.tags,
   };
 }
 

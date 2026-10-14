@@ -1,4 +1,5 @@
 import type { BoardMarkup, PuzzleMarkup } from "@/lib/markup";
+import type { PracticeTag } from "@/lib/practice-tags";
 
 export type PuzzleKind = "move" | "squares";
 
@@ -25,6 +26,8 @@ export interface Puzzle {
   markup?: PuzzleMarkup;
   chapterId?: string | null;
   sort?: number;
+  /** Motivace: Z = procvičení za výklad, P = políčka. */
+  tags?: PracticeTag[];
 }
 
 export interface PuzzleInput {
@@ -44,6 +47,7 @@ export interface PuzzleInput {
   chapterId?: string | null;
   sort?: number;
   allowEmptyMoves?: boolean;
+  tags?: PracticeTag[];
 }
 
 export interface PuzzleRow {

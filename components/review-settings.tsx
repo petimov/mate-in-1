@@ -21,11 +21,19 @@ export function ReviewSettings() {
     formatIntervals(prefs.againIntervals),
   );
   const [againTimes, setAgainTimes] = useState(String(prefs.againTimes));
+  const [wrongClearCount, setWrongClearCount] = useState(
+    String(prefs.wrongClearCount),
+  );
+  const [penaltySeconds, setPenaltySeconds] = useState(
+    String(prefs.penaltySeconds),
+  );
 
   useEffect(() => {
     setGoodText(formatIntervals(prefs.goodIntervals));
     setAgainText(formatIntervals(prefs.againIntervals));
     setAgainTimes(String(prefs.againTimes));
+    setWrongClearCount(String(prefs.wrongClearCount));
+    setPenaltySeconds(String(prefs.penaltySeconds));
   }, [prefs]);
 
   function saveGood(intervals: number[]) {
@@ -266,6 +274,55 @@ export function ReviewSettings() {
                   : "hned"
               }.`}
         </p>
+      </div>
+
+      <div>
+        <h3 className="text-sm font-semibold">Motivace · kapitola</h3>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Trénink špatných a penalizace času při běhu celé kapitoly.
+        </p>
+        <div className="mt-3 grid gap-4 sm:grid-cols-2">
+          <div className="grid gap-2">
+            <Label htmlFor="wrong-clear">Správně v tréninku špatných</Label>
+            <Input
+              id="wrong-clear"
+              type="number"
+              min={1}
+              max={10}
+              value={wrongClearCount}
+              onChange={(event) => setWrongClearCount(event.target.value)}
+              onBlur={() => {
+                const n = Number(wrongClearCount);
+                setPrefs({
+                  ...prefs,
+                  wrongClearCount: Number.isFinite(n)
+                    ? n
+                    : prefs.wrongClearCount,
+                });
+              }}
+            />
+          </div>
+          <div className="grid gap-2">
+            <Label htmlFor="penalty-sec">Penalizace za fail (s)</Label>
+            <Input
+              id="penalty-sec"
+              type="number"
+              min={0}
+              max={600}
+              value={penaltySeconds}
+              onChange={(event) => setPenaltySeconds(event.target.value)}
+              onBlur={() => {
+                const n = Number(penaltySeconds);
+                setPrefs({
+                  ...prefs,
+                  penaltySeconds: Number.isFinite(n)
+                    ? n
+                    : prefs.penaltySeconds,
+                });
+              }}
+            />
+          </div>
+        </div>
       </div>
     </div>
   );
