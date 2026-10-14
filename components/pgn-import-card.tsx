@@ -233,17 +233,20 @@ export function PgnImportCard({
           {(
             [
               ["", "—"],
-              ["V", "Vedle"],
-              ["D", "Dál"],
+              ["V", "V"],
+              ["D", "D"],
             ] as const
           ).map(([value, label]) => (
             <button
               key={value || "none"}
               type="button"
+              title={
+                value === "V" ? "Vedle" : value === "D" ? "Dál" : "Bez F"
+              }
               className={
                 importDistance === value
-                  ? "rounded border border-foreground px-2 py-0.5 text-xs font-semibold"
-                  : "rounded border border-border px-2 py-0.5 text-xs text-muted-foreground"
+                  ? "inline-flex h-6 min-w-6 items-center justify-center rounded-full px-1 text-sm text-muted-foreground ring-1 ring-foreground/25"
+                  : "inline-flex h-6 min-w-6 items-center justify-center rounded-full px-1 text-sm text-muted-foreground hover:bg-foreground/5"
               }
               onClick={() => setImportDistance(value)}
             >

@@ -17,7 +17,6 @@ import {
   countPiecesOnFen,
   difficultyVars,
   evalDifficultyFormula,
-  mergeParams,
   type ParamFlagKey,
   type PuzzleParams,
 } from "@/lib/puzzle-params";
@@ -36,6 +35,32 @@ type Props = {
   showLateFlags?: boolean;
 };
 
+function ParamRing({
+  active,
+  title,
+  onClick,
+  children,
+}: {
+  active: boolean;
+  title: string;
+  onClick: () => void;
+  children: string;
+}) {
+  return (
+    <button
+      type="button"
+      title={title}
+      className={cn(
+        "inline-flex h-6 min-w-6 items-center justify-center rounded-full px-1 text-sm text-muted-foreground",
+        active ? "ring-1 ring-foreground/25" : "hover:bg-foreground/5",
+      )}
+      onClick={onClick}
+    >
+      {children}
+    </button>
+  );
+}
+
 function ChipGroup<T extends string>({
   label,
   options,
@@ -50,29 +75,25 @@ function ChipGroup<T extends string>({
   onPick: (next: T | undefined) => void;
 }) {
   return (
-    <div className="flex min-w-0 flex-wrap items-center gap-1">
+    <div className="flex min-w-0 flex-wrap items-center gap-0.5">
       <span className="w-14 shrink-0 text-[10px] uppercase tracking-wide text-muted-foreground">
         {label}
       </span>
-      {options.map((opt) => {
-        const active = value === opt;
-        return (
-          <button
-            key={opt}
-            type="button"
-            title={labels?.[opt] ?? opt}
-            className={cn(
-              "inline-flex h-6 min-w-6 items-center justify-center rounded border px-1.5 text-[11px] font-semibold",
-              active
-                ? "border-foreground bg-foreground text-background"
-                : "border-border text-muted-foreground hover:border-foreground/40 hover:text-foreground",
-            )}
-            onClick={() => onPick(active ? undefined : opt)}
-          >
-            {opt === "C" ? "Č" : opt}
-          </button>
-        );
-      })}
+      <span className="inline-flex flex-wrap">
+        {options.map((opt) => {
+          const active = value === opt;
+          return (
+            <ParamRing
+              key={opt}
+              active={active}
+              title={labels?.[opt] ?? opt}
+              onClick={() => onPick(active ? undefined : opt)}
+            >
+              {opt === "C" ? "Č" : opt}
+            </ParamRing>
+          );
+        })}
+      </span>
     </div>
   );
 }
@@ -113,14 +134,13 @@ export function PuzzleParamsEditor({
   }
 
   function toggleFlag(key: ParamFlagKey) {
-    const flags = { ...value.flags };
+    const flags = { ...(value.flags ?? {}) };
     if (flags[key]) delete flags[key];
     else flags[key] = true;
-    onChange(
-      mergeParams(value, {
-        flags: Object.keys(flags).length ? flags : undefined,
-      }),
-    );
+    const next: PuzzleParams = { ...value };
+    if (Object.keys(flags).length) next.flags = flags;
+    else delete next.flags;
+    onChange(next);
   }
 
   const earlyFlags = PARAM_FLAG_KEYS.filter((k) =>
@@ -201,20 +221,20 @@ export function PuzzleParamsEditor({
         <div
           className={cn(
             "grid gap-1 text-[11px] text-muted-foreground",
-            compact ? "grid-cols-2" : "grid-cols-4",
+            compact ? "grid-cols-1 sm:grid-cols-2" : "grid-cols-2",
           )}
         >
-          <span title="Počet figur">
-            Q <strong className="text-foreground">{q}</strong>
+          <span title="Q · počet figur na šachovnici">
+            Figur <strong className="text-foreground">{q}</strong>
           </span>
-          <span title="Figury ze šipek">
-            R <strong className="text-foreground">{arrowPieces}</strong>
+          <span title="R · figury ze šipek po tahu">
+            Ze šipek <strong className="text-foreground">{arrowPieces}</strong>
           </span>
-          <span title="Špatné tahy">
-            S <strong className="text-foreground">{wrongCount}</strong>
+          <span title="S · počet špatných tahů">
+            Špatných <strong className="text-foreground">{wrongCount}</strong>
           </span>
-          <span title="Koeficient obtížnosti">
-            T <strong className="text-foreground">{difficulty}</strong>
+          <span title="T · koeficient obtížnosti">
+            Obtížnost <strong className="text-foreground">{difficulty}</strong>
           </span>
         </div>
       ) : null}
@@ -232,19 +252,13 @@ function FlagChip({
   onToggle: () => void;
 }) {
   return (
-    <button
-      type="button"
+    <ParamRing
+      active={active}
       title={PARAM_FLAG_LABEL[flag]}
-      className={cn(
-        "inline-flex h-6 min-w-6 items-center justify-center rounded border px-1.5 text-[11px] font-semibold",
-        active
-          ? "border-amber-600 bg-amber-500/20 text-amber-900 dark:text-amber-200"
-          : "border-border text-muted-foreground hover:border-foreground/40",
-      )}
       onClick={onToggle}
     >
       {flag}
-    </button>
+    </ParamRing>
   );
 }
 

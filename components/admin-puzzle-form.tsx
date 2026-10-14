@@ -87,7 +87,6 @@ import {
 import {
   isEmptyParams,
   mergeParams,
-  modeFromPuzzleKind,
   parsePuzzleParams,
   puzzleKindFromMode,
   sortPuzzlesByKey,
@@ -1676,10 +1675,10 @@ export function AdminPuzzleForm() {
                         ["O", "O"],
                         ["L", "L"],
                         ["CH", "CH"],
-                        ["q", "Q"],
-                        ["r", "R"],
-                        ["s", "S"],
-                        ["t", "T"],
+                        ["q", "figur"],
+                        ["r", "ze šipek"],
+                        ["s", "špatných"],
+                        ["t", "obtížnost"],
                       ].map(([value, label]) => (
                         <option key={value} value={value}>
                           {label}
@@ -2213,27 +2212,6 @@ export function AdminPuzzleForm() {
                 />
                     </div>
                   </details>
-                  <details
-                    key={isVyklad ? "v-explain" : "c-explain"}
-                    className="shrink-0 border-t border-border pt-1"
-                    open={isVyklad ? true : undefined}
-                  >
-                    <summary className="cursor-pointer select-none px-1 py-1 text-muted-foreground hover:text-foreground">
-                      Vysvětlení{form.explanation.trim() ? " (A)" : ""}
-                    </summary>
-                    <div className="flex flex-col gap-1.5 px-0.5 pb-2">
-                  <Textarea
-                    id="explanation"
-                    rows={5}
-                    className="min-h-[6rem] resize-y px-2 py-1.5"
-                    placeholder={isVyklad ? "K tomuto tahu…" : "Po správném tahu…"}
-                    value={form.explanation}
-                    onChange={(e) =>
-                      setForm({ ...form, explanation: e.target.value })
-                    }
-                  />
-                    </div>
-                  </details>
                   {!wrongOpen && !isVyklad ? (
                   <div className="shrink-0 border-t border-border pt-1">
                     <div className="flex shrink-0 items-center gap-1">
@@ -2253,11 +2231,51 @@ export function AdminPuzzleForm() {
                     </div>
                   </div>
                   ) : null}
-                  <details className="shrink-0 border-t border-border pt-1">
-                    <summary className="cursor-pointer select-none px-1 py-1 text-muted-foreground hover:text-foreground">
+                  <details
+                    className="shrink-0 border-t border-border pt-1"
+                    open={isVyklad ? true : undefined}
+                  >
+                    <summary
+                      className={`cursor-pointer select-none px-1 py-1 hover:text-foreground ${
+                        isVyklad && !form.explanation.trim()
+                          ? "font-medium text-red-600 dark:text-red-400"
+                          : "text-muted-foreground"
+                      }`}
+                    >
                       Údaje
+                      {isVyklad && !form.explanation.trim()
+                        ? " · chybí vysvětlení"
+                        : ""}
                     </summary>
                     <div className="grid grid-cols-2 gap-2 px-0.5 pb-2">
+                  {isVyklad ? (
+                    <div className="col-span-2 space-y-1">
+                      <label
+                        htmlFor="explanation"
+                        className={`text-xs font-medium ${
+                          form.explanation.trim()
+                            ? "text-muted-foreground"
+                            : "text-red-600 dark:text-red-400"
+                        }`}
+                      >
+                        Vysvětlení
+                      </label>
+                      <Textarea
+                        id="explanation"
+                        rows={5}
+                        className={`min-h-[6rem] resize-y px-2 py-1.5 ${
+                          form.explanation.trim()
+                            ? ""
+                            : "border-red-600 bg-red-500 text-white placeholder:text-white/70"
+                        }`}
+                        placeholder="K tomuto tahu…"
+                        value={form.explanation}
+                        onChange={(e) =>
+                          setForm({ ...form, explanation: e.target.value })
+                        }
+                      />
+                    </div>
+                  ) : null}
                   <select
                     id="chapter"
                     className="col-span-2 h-9 w-full rounded-md border border-border bg-background px-2"
@@ -2309,12 +2327,6 @@ export function AdminPuzzleForm() {
                   {!isVyklad ? (
                     <div className="col-span-2 space-y-2 rounded-md border border-border p-2">
                       <div className="flex items-center justify-between gap-2">
-                        <span className="text-xs font-medium text-muted-foreground">
-                          Parametry (Excel A–T)
-                        </span>
-                        <span className="text-[10px] text-muted-foreground">
-                          Role Z/P = Motivace
-                        </span>
                       </div>
                       <PuzzleParamsEditor
                         value={form.params}
@@ -2323,18 +2335,13 @@ export function AdminPuzzleForm() {
                         markup={form.markup}
                         difficultyFormula={getReviewPrefs().difficultyFormula}
                         onChange={(params) => {
-                          const mode = params.mode;
-                          const nextKind = mode
-                            ? puzzleKindFromMode(mode)
+                          // Druhý klik odznačí — nenechat mode znovu doplnit z kind.
+                          const nextKind = params.mode
+                            ? puzzleKindFromMode(params.mode)
                             : form.kind;
                           setForm({
                             ...form,
-                            params: {
-                              ...params,
-                              mode:
-                                mode ??
-                                modeFromPuzzleKind(nextKind, form.params.mode),
-                            },
+                            params,
                             kind: nextKind,
                             tags: tagsFromParams(params),
                           });
