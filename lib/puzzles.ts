@@ -318,6 +318,10 @@ export function mapPuzzleRow(row: PuzzleRow): Puzzle {
     chapterId,
     sort,
     tags: packed.tags?.length ? packed.tags : undefined,
+    params:
+      packed.params && Object.keys(packed.params).length > 0
+        ? packed.params
+        : undefined,
   };
 }
 
@@ -388,7 +392,9 @@ export function puzzleRowPayload(input: PuzzleInput) {
         sort,
       },
       { kind, squares: kind === "squares" ? parseSquares(input.squares) : [] },
-      input.tags,
+      input.params && Object.keys(input.params).length > 0
+        ? input.params
+        : input.tags,
     ),
     video_url: input.videoUrl?.trim() || null,
     wrong_replies: replies,
@@ -417,6 +423,7 @@ export function puzzleToSaveBody(puzzle: Puzzle) {
     chapterId: puzzle.chapterId ?? null,
     sort: puzzle.sort ?? 0,
     tags: puzzle.tags,
+    params: puzzle.params,
   };
 }
 

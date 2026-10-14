@@ -60,15 +60,12 @@ export function MotivaceDashboard() {
   }
 
   return (
-    <div className="mx-auto w-full max-w-6xl px-4 py-6 sm:py-8">
+    <div className="mx-auto w-full max-w-7xl px-4 py-6 sm:py-8">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">
             Motivace
           </h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Procvičení cvičných kapitol (Z/P). Stats jen z celé kapitoly najednou.
-          </p>
         </div>
         {wrongCount > 0 ? (
           <Button asChild className="bg-red-600 text-white hover:bg-red-700">
@@ -144,7 +141,7 @@ export function MotivaceDashboard() {
         </section>
       </div>
 
-      <div className="mt-8 grid gap-8">
+      <div className="mt-8 space-y-6">
         {sections.length === 0 ? (
           <p className="text-sm text-muted-foreground">
             Zatím žádné cvičné kapitoly s úlohami. Přidej kapitolu typu C a úlohy
@@ -153,13 +150,13 @@ export function MotivaceDashboard() {
         ) : (
           sections.map((section) => (
             <section key={`${section.parent.id}-${section.side}`}>
-              <h2 className="text-lg font-semibold">
+              <h2 className="mb-3 text-base font-semibold sm:text-lg">
                 {section.parent.title}{" "}
                 <span className="font-normal text-muted-foreground">
                   {section.sideLabel}
                 </span>
               </h2>
-              <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
                 {section.columns.map((column) => (
                   <ChapterColumnCard key={column.chapter.id} column={column} />
                 ))}
@@ -180,15 +177,18 @@ function Stat({
   value: ReactNode;
 }) {
   return (
-    <div className="flex items-baseline justify-between gap-3">
-      <dt className="text-muted-foreground">{label}</dt>
-      <dd className="font-medium tabular-nums text-foreground">{value}</dd>
+    <div className="flex items-baseline justify-between gap-2">
+      <dt className="truncate text-muted-foreground">{label}</dt>
+      <dd className="shrink-0 font-medium tabular-nums text-foreground">
+        {value}
+      </dd>
     </div>
   );
 }
 
 function ChapterColumnCard({ column }: { column: MotivaceColumn }) {
   const color = motivacePieceColor(column.piece);
+  const pieceLabel = MOTIVACE_PIECE_LABEL[column.piece];
   const total = column.puzzles.length;
   const best = column.best;
   const done = best ? best.correct + best.wrong : 0;
@@ -199,13 +199,13 @@ function ChapterColumnCard({ column }: { column: MotivaceColumn }) {
   return (
     <article
       className={cn(
-        "flex flex-col rounded-xl border border-border bg-background p-3",
+        "flex min-w-0 flex-col rounded-xl border border-border bg-background p-2.5",
         column.wip && "ring-2 ring-amber-400/60",
       )}
     >
       <div
-        className="mb-3 h-2.5 w-full overflow-hidden rounded-full bg-muted"
-        title={`${MOTIVACE_PIECE_LABEL[column.piece]} · ${barPct} %`}
+        className="mb-2 h-2 w-full overflow-hidden rounded-full bg-muted"
+        title={`${pieceLabel} · ${barPct} %`}
       >
         <div
           className="h-full rounded-full transition-[width]"
@@ -215,54 +215,61 @@ function ChapterColumnCard({ column }: { column: MotivaceColumn }) {
 
       <div className="mb-2 flex items-center gap-2">
         {perfect ? (
-          <MotivaceCrown className="size-8" />
+          <MotivaceCrown className="size-7 shrink-0" />
         ) : (
           <MotivacePieceMark
-            label={MOTIVACE_PIECE_LABEL[column.piece]}
+            label={pieceLabel}
             color={color}
+            className="size-7 text-[11px]"
           />
         )}
         <div className="min-w-0">
-          <h3 className="truncate text-sm font-semibold">
-            {column.chapter.title}
+          <h3 className="truncate text-sm font-semibold" title={column.chapter.title}>
+            {pieceLabel}
           </h3>
           {column.wip ? (
-            <p className="text-xs text-amber-700 dark:text-amber-300">
+            <p className="text-[11px] text-amber-700 dark:text-amber-300">
               Rozpracovaná
             </p>
-          ) : null}
+          ) : (
+            <p
+              className="truncate text-[11px] text-muted-foreground"
+              title={column.chapter.title}
+            >
+              {column.chapter.title}
+            </p>
+          )}
         </div>
       </div>
 
       {perfect && best ? (
-        <dl className="grid gap-1 text-xs text-muted-foreground">
+        <dl className="grid gap-0.5 text-[11px] text-muted-foreground">
           <Stat
             label="Čas"
             value={formatPracticeDuration(best.elapsedMs)}
           />
           <Stat
-            label="Průměr / úloha"
+            label="Ø / úloha"
             value={formatPracticeDuration(
               best.correct ? best.elapsedMs / best.correct : 0,
             )}
           />
           <p className="mt-1 inline-flex items-center gap-1 text-amber-700 dark:text-amber-300">
-            <Trophy className="size-3.5" />
-            Celá kapitola správně
+            <Trophy className="size-3" />
+            100 %
           </p>
         </dl>
       ) : (
-        <dl className="grid gap-1 text-xs text-muted-foreground">
+        <dl className="grid gap-0.5 text-[11px] text-muted-foreground">
           <Stat label="Dobře" value={best ? `${pct} %` : "—"} />
-          <Stat label="Hotových úloh" value={String(total)} />
-          <Stat label="Úloh dobře" value={best ? String(best.correct) : "—"} />
-          <Stat label="Úloh špatně" value={best ? String(best.wrong) : "—"} />
+          <Stat label="Úloh" value={String(total)} />
+          <Stat label="OK / špatně" value={best ? `${best.correct}/${best.wrong}` : "—"} />
           <Stat
             label="Čas"
             value={best ? formatPracticeDuration(best.elapsedMs) : "—"}
           />
           <Stat
-            label="Průměr na 1 úlohu"
+            label="Ø úloha"
             value={
               best && done
                 ? formatPracticeDuration(best.elapsedMs / done)
@@ -270,29 +277,19 @@ function ChapterColumnCard({ column }: { column: MotivaceColumn }) {
             }
           />
           <Stat
-            label="Čas s penalizací"
+            label="S penalizací"
             value={
               best
                 ? formatPracticeDuration(best.elapsedMs + best.penaltyMs)
                 : "—"
             }
           />
-          <Stat
-            label="Průměr s penalizací"
-            value={
-              best && done
-                ? formatPracticeDuration(
-                    (best.elapsedMs + best.penaltyMs) / done,
-                  )
-                : "—"
-            }
-          />
         </dl>
       )}
 
-      <div className="mt-3 flex flex-wrap gap-2">
+      <div className="mt-auto flex flex-col gap-1.5 pt-2">
         {column.wip ? (
-          <Button asChild size="sm" className="flex-1">
+          <Button asChild size="sm" className="h-8 w-full text-xs">
             <Link
               href={`/ulohy/trenink?mode=chapter&chapter=${encodeURIComponent(column.chapter.id)}&resume=1`}
             >
@@ -300,11 +297,11 @@ function ChapterColumnCard({ column }: { column: MotivaceColumn }) {
             </Link>
           </Button>
         ) : null}
-        <Button asChild size="sm" variant="outline" className="flex-1">
+        <Button asChild size="sm" variant="outline" className="h-8 w-full text-xs">
           <Link
             href={`/ulohy/trenink?mode=chapter&chapter=${encodeURIComponent(column.chapter.id)}`}
           >
-            Zkusit znovu
+            {best ? "Znovu" : "Trénovat"}
           </Link>
         </Button>
       </div>

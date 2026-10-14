@@ -56,6 +56,7 @@ export function PgnImportCard({
   const [importing, setImporting] = useState(false);
   const [titleBase, setTitleBase] = useState("");
   const [numberTitles, setNumberTitles] = useState(true);
+  const [importDistance, setImportDistance] = useState<"" | "V" | "D">("");
 
   const applyText = useCallback((text: string, names: string[]) => {
     const result = parsePgnText(text);
@@ -126,16 +127,35 @@ export function PgnImportCard({
     setImporting(true);
     setStatus(null);
 
+    const chapter = curriculum.chapters.find((item) => item.id === chapterId);
+    const chapterParams = chapter?.params ?? {};
     const res = await fetch("/api/puzzles/import", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        puzzles: parsed.puzzles.map((puzzle, index) => ({
-          ...puzzle,
-          title: importTitle(puzzle.title, titleBase, numberTitles, index),
-          chapterId: chapterId || undefined,
-          sort: nextSortInChapter(puzzles, chapterId) + index,
-        })),
+        puzzles: parsed.puzzles.map((puzzle, index) => {
+          const title = importTitle(
+            puzzle.title,
+            titleBase,
+            numberTitles,
+            index,
+          ).slice(0, 48);
+          const params = {
+            ...chapterParams,
+            ...(importDistance ? { distance: importDistance } : {}),
+          };
+          return {
+            ...puzzle,
+            title,
+            chapterId: chapterId || undefined,
+            sort: nextSortInChapter(puzzles, chapterId) + index,
+            params,
+            tags:
+              params.role === "Z" || params.role === "P"
+                ? [params.role]
+                : undefined,
+          };
+        }),
       }),
     });
     const data = (await res.json()) as {
@@ -208,6 +228,32 @@ export function PgnImportCard({
             Číslovat od 1
           </label>
         </div>
+        <label className="flex flex-wrap items-center gap-2 text-sm">
+          <span className="text-muted-foreground">Vzdál. (F)</span>
+          {(
+            [
+              ["", "—"],
+              ["V", "Vedle"],
+              ["D", "Dál"],
+            ] as const
+          ).map(([value, label]) => (
+            <button
+              key={value || "none"}
+              type="button"
+              className={
+                importDistance === value
+                  ? "rounded border border-foreground px-2 py-0.5 text-xs font-semibold"
+                  : "rounded border border-border px-2 py-0.5 text-xs text-muted-foreground"
+              }
+              onClick={() => setImportDistance(value)}
+            >
+              {label}
+            </button>
+          ))}
+          <span className="text-xs text-muted-foreground">
+            + default parametry kapitoly
+          </span>
+        </label>
         {titleBase.trim() ? (
           <p className="text-xs text-muted-foreground">
             {numberTitles

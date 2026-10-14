@@ -7,6 +7,7 @@ import {
   type ChapterSide,
 } from "@/lib/curriculum";
 import { BRUSH_HEX, type Brush } from "@/lib/markup";
+import { hasMotivaceRole } from "@/lib/puzzle-params";
 import { hasPracticeMotivaceTag } from "@/lib/practice-tags";
 import type { ChapterBest } from "@/lib/practice-store";
 import type { Puzzle } from "@/lib/types";
@@ -105,13 +106,31 @@ export function puzzleCountsForMotivace(
   chapters: Chapter[],
 ): Puzzle[] {
   const direct = puzzlesInChapter(puzzles, chapterId, false, chapters);
-  const tagged = direct.filter((puzzle) =>
-    hasPracticeMotivaceTag(puzzle.tags),
+  const tagged = direct.filter(
+    (puzzle) =>
+      hasMotivaceRole(puzzle.params) || hasPracticeMotivaceTag(puzzle.tags),
   );
   return tagged.length > 0 ? tagged : direct;
 }
 
-/** Cvičení kapitoly s úlohami → sloupce podle figurky (i z nadkapitoly). */
+/** Kořen tématu (nadkapitola) — pod ním sedí V/D/S/J/P vedle sebe. */
+export function themeRootOf(
+  chapter: Chapter,
+  chapters: Chapter[],
+): Chapter {
+  let current: Chapter = chapter;
+  while (current.parentId) {
+    const parent = chapters.find((item) => item.id === current.parentId);
+    if (!parent) break;
+    current = parent;
+  }
+  return current;
+}
+
+/**
+ * Cvičení listové kapitoly → sekce = kořen tématu × barva,
+ * sloupce = figurky vedle sebe.
+ */
 export function buildMotivaceSections(
   chapters: Chapter[],
   puzzles: Puzzle[],
@@ -128,9 +147,9 @@ export function buildMotivaceSections(
     const isCviceni = chapterKindOf(node) === "cviceni";
     const piece = detectPieceFromChain(node, chapters) ?? "pawn";
 
-    // List cvičení (nebo jakákoli kapitola s Z/P úlohami) s přímými úlohami.
-    const hasTagged = leafPuzzles.some((puzzle) =>
-      hasPracticeMotivaceTag(puzzle.tags),
+    const hasTagged = leafPuzzles.some(
+      (puzzle) =>
+        hasMotivaceRole(puzzle.params) || hasPracticeMotivaceTag(puzzle.tags),
     );
     if (
       leafPuzzles.length > 0 &&
@@ -138,15 +157,13 @@ export function buildMotivaceSections(
       (isCviceni || hasTagged)
     ) {
       const side = node.side ?? chapterSideOf(chapters, node.id);
-      const sectionParent = node.parentId
-        ? chapters.find((item) => item.id === node.parentId) ?? node
-        : node;
+      const theme = themeRootOf(node, chapters);
       let section = sections.find(
-        (item) => item.parent.id === sectionParent.id && item.side === side,
+        (item) => item.parent.id === theme.id && item.side === side,
       );
       if (!section) {
         section = {
-          parent: sectionParent,
+          parent: theme,
           side,
           sideLabel: side === "black" ? "černými" : "bílými",
           columns: [],

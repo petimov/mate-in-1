@@ -16,12 +16,13 @@ import {
   unpackPlacementComment,
   type PuzzlePlacement,
 } from "@/lib/curriculum";
+import { tagsFromParams, type PracticeTag } from "@/lib/practice-tags";
 import {
-  packPracticeTagsComment,
-  parsePracticeTags,
-  unpackPracticeTagsComment,
-  type PracticeTag,
-} from "@/lib/practice-tags";
+  packParamsComment,
+  parsePuzzleParams,
+  unpackParamsComment,
+  type PuzzleParams,
+} from "@/lib/puzzle-params";
 import { parseSquares, sameSquares, packKindComment, unpackKindComment } from "@/lib/squares";
 import type { PuzzleKind, WrongReply } from "@/lib/types";
 
@@ -64,9 +65,9 @@ export function packExplanation(
   markup?: PuzzleMarkup,
   placement?: PuzzlePlacement,
   kindPack?: { kind: PuzzleKind; squares: string[] },
-  tags?: PracticeTag[],
+  tagsOrParams?: PracticeTag[] | PuzzleParams,
 ): string | null {
-  const stripped = unpackPracticeTagsComment(
+  const stripped = unpackParamsComment(
     unpackKindComment(
       unpackPlacementComment(
         unpackMarkupComment((text ?? "").replace(WSR, "")).text,
@@ -83,7 +84,10 @@ export function packExplanation(
   if (kindPack) {
     body += packKindComment(kindPack.kind, kindPack.squares);
   }
-  body += packPracticeTagsComment(tags);
+  const params = Array.isArray(tagsOrParams)
+    ? parsePuzzleParams(tagsOrParams)
+    : parsePuzzleParams(tagsOrParams ?? {});
+  body += packParamsComment(params);
   return body.trim() ? body : null;
 }
 
@@ -95,6 +99,7 @@ export function unpackExplanation(raw: string | null | undefined): {
   kind?: PuzzleKind;
   squares: string[];
   tags: PracticeTag[];
+  params: PuzzleParams;
 } {
   if (!raw) {
     return {
@@ -103,22 +108,24 @@ export function unpackExplanation(raw: string | null | undefined): {
       placement: emptyPlacement(),
       squares: [],
       tags: [],
+      params: {},
     };
   }
   const packedMarkup = unpackMarkupComment(raw);
   const packedPlace = unpackPlacementComment(packedMarkup.text);
   const packedKind = unpackKindComment(packedPlace.text);
-  const packedTags = unpackPracticeTagsComment(packedKind.text);
-  const match = packedTags.text.match(WSR);
+  const packedParams = unpackParamsComment(packedKind.text);
+  const match = packedParams.text.match(WSR);
   if (!match) {
     return {
-      explanation: packedTags.text.trim() || undefined,
+      explanation: packedParams.text.trim() || undefined,
       replies: [],
       markup: packedMarkup.markup,
       placement: packedPlace.placement,
       kind: packedKind.kind,
       squares: packedKind.squares,
-      tags: packedTags.tags,
+      tags: tagsFromParams(packedParams.params),
+      params: packedParams.params,
     };
   }
   let replies: WrongReply[] = [];
@@ -127,7 +134,7 @@ export function unpackExplanation(raw: string | null | undefined): {
   } catch {
     replies = [];
   }
-  const explanation = packedTags.text.replace(WSR, "").trim() || undefined;
+  const explanation = packedParams.text.replace(WSR, "").trim() || undefined;
   return {
     explanation,
     replies,
@@ -135,7 +142,8 @@ export function unpackExplanation(raw: string | null | undefined): {
     placement: packedPlace.placement,
     kind: packedKind.kind,
     squares: packedKind.squares,
-    tags: packedTags.tags,
+    tags: tagsFromParams(packedParams.params),
+    params: packedParams.params,
   };
 }
 
@@ -171,6 +179,7 @@ export function mergeWrongSources(
   kind?: PuzzleKind;
   squares: string[];
   tags: PracticeTag[];
+  params: PuzzleParams;
 } {
   const packed = unpackExplanation(explanation);
   const fromColumn = parsePuzzleMarkup(markupColumn);
@@ -181,7 +190,8 @@ export function mergeWrongSources(
     placement: packed.placement,
     kind: packed.kind,
     squares: packed.squares,
-    tags: parsePracticeTags(packed.tags),
+    tags: packed.tags,
+    params: packed.params,
   };
 }
 

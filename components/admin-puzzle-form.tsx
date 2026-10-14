@@ -78,11 +78,22 @@ import {
 } from "@/lib/markup";
 import { isUuid, puzzleKind, puzzleToSaveBody } from "@/lib/puzzles";
 import { parseSquares } from "@/lib/squares";
+import { PuzzleParamsEditor } from "@/components/puzzle-params-editor";
 import {
   parsePracticeTags,
-  togglePracticeTag,
+  tagsFromParams,
   type PracticeTag,
 } from "@/lib/practice-tags";
+import {
+  isEmptyParams,
+  mergeParams,
+  modeFromPuzzleKind,
+  parsePuzzleParams,
+  puzzleKindFromMode,
+  sortPuzzlesByKey,
+  type PuzzleParams,
+} from "@/lib/puzzle-params";
+import { getReviewPrefs } from "@/lib/review-prefs";
 import type { Puzzle, PuzzleKind, WrongReply } from "@/lib/types";
 
 function emptyForm() {
@@ -105,6 +116,7 @@ function emptyForm() {
     chapterId: null as string | null,
     sort: 0,
     tags: [] as PracticeTag[],
+    params: {} as PuzzleParams,
   };
 }
 
@@ -135,6 +147,11 @@ function formFromPuzzle(puzzle: Puzzle): PuzzleForm {
     chapterId: puzzle.chapterId ?? null,
     sort: puzzle.sort ?? 0,
     tags: parsePracticeTags(puzzle.tags),
+    params: parsePuzzleParams(
+      puzzle.params && !isEmptyParams(puzzle.params)
+        ? puzzle.params
+        : puzzle.tags,
+    ),
   };
 }
 
@@ -155,6 +172,7 @@ function formFingerprint(form: PuzzleForm): string {
     videoUrl: form.videoUrl,
     wrongReplies: form.wrongReplies,
     tags: form.tags,
+    params: form.params,
     markup: {
       before: normalizeMarkupFp(form.markup.before),
       after: normalizeMarkupFp(form.markup.after),
@@ -203,6 +221,10 @@ export function AdminPuzzleForm() {
   const [historySize, setHistorySize] = useState(0);
   const [undoLabel, setUndoLabel] = useState<string | null>(null);
   const [boardEpoch, setBoardEpoch] = useState(0);
+  const [puzzleSortKey, setPuzzleSortKey] = useState("sort");
+  const [chapterDraftParams, setChapterDraftParams] = useState<PuzzleParams>(
+    {},
+  );
   const historyRef = useRef<AdminSnapshot<ReturnType<typeof emptyForm>>[]>([]);
   const puzzlesRef = useRef(puzzles);
   const undoBusy = useRef(false);
@@ -737,6 +759,84 @@ export function AdminPuzzleForm() {
   const isVyklad = isVykladEditorChapter(activeChapter, curriculum.chapters);
 
   useEffect(() => {
+    setChapterDraftParams(parsePuzzleParams(activeChapter?.params ?? {}));
+  }, [activeChapter?.id, activeChapter?.params]);
+
+  async function renumberChapter(chapterId: string) {
+    const list = puzzlesInChapter(
+      puzzlesRef.current,
+      chapterId,
+      false,
+      curriculum.chapters,
+    );
+    const sorted = sortPuzzlesByKey(list, puzzleSortKey);
+    commitHistory("Přečíslovat kapitolu");
+    const next = puzzlesRef.current.map((item) => {
+      const index = sorted.findIndex((row) => row.id === item.id);
+      if (index < 0) return item;
+      return { ...item, sort: index };
+    });
+    setPuzzles(next);
+    puzzlesRef.current = next;
+    await Promise.all(
+      sorted.map((item, index) =>
+        persistPuzzle({ ...item, sort: index }, chapterId, index),
+      ),
+    );
+    setStatus(`Přečíslováno: ${sorted.length} úloh.`);
+  }
+
+  async function saveChapterParams(applyAll: boolean) {
+    if (!activeChapter) return;
+    const params = parsePuzzleParams(chapterDraftParams);
+    commitHistory(applyAll ? "Parametry kapitoly → všechny" : "Parametry kapitoly");
+    const chapters = curriculum.chapters.map((item) =>
+      item.id === activeChapter.id
+        ? {
+            ...item,
+            ...(isEmptyParams(params)
+              ? { params: undefined }
+              : { params }),
+          }
+        : item,
+    );
+    await persistCurriculum({ ...curriculum, chapters }, "Parametry kapitoly");
+    if (!applyAll) {
+      setStatus("Default parametry kapitoly uloženy.");
+      return;
+    }
+    const list = puzzlesInChapter(
+      puzzlesRef.current,
+      activeChapter.id,
+      false,
+      chapters,
+    );
+    const updated = list.map((item) => ({
+      ...item,
+      params: mergeParams(item.params, params),
+      tags: tagsFromParams(mergeParams(item.params, params)),
+    }));
+    const byId = new Map(updated.map((item) => [item.id, item]));
+    const next = puzzlesRef.current.map((item) => byId.get(item.id) ?? item);
+    setPuzzles(next);
+    puzzlesRef.current = next;
+    await Promise.all(
+      updated.map((item) =>
+        persistPuzzle(item, item.chapterId ?? null, item.sort ?? 0),
+      ),
+    );
+    if (form.id && byId.has(form.id)) {
+      const row = byId.get(form.id)!;
+      setForm((current) => ({
+        ...current,
+        params: row.params ?? {},
+        tags: row.tags ?? [],
+      }));
+    }
+    setStatus(`Parametry přepsány u ${updated.length} úloh.`);
+  }
+
+  useEffect(() => {
     if (!isVyklad) return;
     setWrongOpen(false);
     setWrongEdit(null);
@@ -995,6 +1095,8 @@ export function AdminPuzzleForm() {
         (item) => (item.chapterId ?? null) === chapterId,
       ),
     );
+    const defaults = parsePuzzleParams(chapter?.params ?? {});
+    const kind = puzzleKindFromMode(defaults.mode);
     // Draft: prázdný FEN (ne EMPTY_SETUP — chess.js / stará validace to brala jako chybu).
     const label = "Nová úloha";
     commitHistory(label);
@@ -1004,11 +1106,13 @@ export function AdminPuzzleForm() {
       body: JSON.stringify({
         title,
         fen: "",
-        kind: "move",
+        kind,
         moves: [],
         allowEmptyMoves: true,
         chapterId,
         sort,
+        params: defaults,
+        tags: tagsFromParams(defaults),
       }),
     });
     const data = (await res.json()) as { error?: string; puzzle?: Puzzle };
@@ -1023,6 +1127,8 @@ export function AdminPuzzleForm() {
       fen: data.puzzle.fen?.trim() || "",
       chapterId,
       sort,
+      params: data.puzzle.params ?? defaults,
+      tags: data.puzzle.tags ?? tagsFromParams(defaults),
     };
     setPuzzles((current) => {
       const next = [...current, created];
@@ -1167,7 +1273,8 @@ export function AdminPuzzleForm() {
           : reply,
       ),
       markup: form.markup,
-      tags: form.tags,
+      tags: tagsFromParams(form.params),
+      params: form.params,
       allowEmptyMoves: true,
       chapterId: form.chapterId,
       sort:
@@ -1505,9 +1612,88 @@ export function AdminPuzzleForm() {
       </details>
       <div className="flex min-h-0 flex-1 overflow-hidden">
         <div className="flex min-h-0 w-[min(38%,28rem)] shrink-0 flex-col overflow-hidden border-r border-border px-1">
+            {activeChapter && chapterKindOf(activeChapter) === "cviceni" ? (
+              <details className="shrink-0 border-b border-border px-1 py-1 text-[12px]">
+                <summary className="cursor-pointer text-muted-foreground hover:text-foreground">
+                  Parametry kapitoly · řazení
+                </summary>
+                <div className="mt-2 space-y-2 pb-2">
+                  <PuzzleParamsEditor
+                    value={chapterDraftParams}
+                    showComputed={false}
+                    onChange={setChapterDraftParams}
+                  />
+                  <div className="flex flex-wrap gap-1">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="h-7 text-[11px]"
+                      onClick={() => void saveChapterParams(false)}
+                    >
+                      Uložit default
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="h-7 text-[11px]"
+                      onClick={() => void saveChapterParams(true)}
+                    >
+                      Přepsat všechny
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="h-7 text-[11px]"
+                      onClick={() => void renumberChapter(activeChapter.id)}
+                    >
+                      Přečíslovat
+                    </Button>
+                  </div>
+                  <label className="flex items-center gap-2 text-[11px] text-muted-foreground">
+                    Řadit
+                    <select
+                      className="h-7 rounded border border-border bg-background px-1 text-foreground"
+                      value={puzzleSortKey}
+                      onChange={(e) => setPuzzleSortKey(e.target.value)}
+                    >
+                      {[
+                        ["sort", "číslo"],
+                        ["title", "motiv"],
+                        ["piece", "figura"],
+                        ["color", "barva"],
+                        ["king", "král"],
+                        ["role", "role"],
+                        ["mode", "typ"],
+                        ["distance", "vzdál."],
+                        ["U", "U"],
+                        ["B", "B"],
+                        ["P", "P"],
+                        ["Z", "Z"],
+                        ["V", "V"],
+                        ["O", "O"],
+                        ["L", "L"],
+                        ["CH", "CH"],
+                        ["q", "Q"],
+                        ["r", "R"],
+                        ["s", "S"],
+                        ["t", "T"],
+                      ].map(([value, label]) => (
+                        <option key={value} value={value}>
+                          {label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+              </details>
+            ) : null}
             <CurriculumTree
               curriculum={curriculum}
               puzzles={puzzles}
+              puzzleSortKey={puzzleSortKey}
               courseId={courseId}
               selectedPuzzleId={form.id || undefined}
               selectedChapterId={selectedChapterId}
@@ -2120,33 +2306,42 @@ export function AdminPuzzleForm() {
                   value={form.hint}
                   onChange={(e) => setForm({ ...form, hint: e.target.value })}
                 />
-                  <div className="col-span-2 flex flex-wrap items-center gap-3 px-0.5 text-sm">
-                    <span className="text-muted-foreground">Motivace</span>
-                    {(
-                      [
-                        { id: "Z" as const, label: "Z · procvičení" },
-                        { id: "P" as const, label: "P · políčka" },
-                      ] as const
-                    ).map((item) => (
-                      <label
-                        key={item.id}
-                        className="inline-flex cursor-pointer items-center gap-1.5"
-                      >
-                        <input
-                          type="checkbox"
-                          className="size-3.5 accent-primary"
-                          checked={form.tags.includes(item.id)}
-                          onChange={() =>
-                            setForm({
-                              ...form,
-                              tags: togglePracticeTag(form.tags, item.id),
-                            })
-                          }
-                        />
-                        {item.label}
-                      </label>
-                    ))}
-                  </div>
+                  {!isVyklad ? (
+                    <div className="col-span-2 space-y-2 rounded-md border border-border p-2">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-xs font-medium text-muted-foreground">
+                          Parametry (Excel A–T)
+                        </span>
+                        <span className="text-[10px] text-muted-foreground">
+                          Role Z/P = Motivace
+                        </span>
+                      </div>
+                      <PuzzleParamsEditor
+                        value={form.params}
+                        fen={form.fen}
+                        wrongCount={form.wrongReplies.length}
+                        markup={form.markup}
+                        difficultyFormula={getReviewPrefs().difficultyFormula}
+                        onChange={(params) => {
+                          const mode = params.mode;
+                          const nextKind = mode
+                            ? puzzleKindFromMode(mode)
+                            : form.kind;
+                          setForm({
+                            ...form,
+                            params: {
+                              ...params,
+                              mode:
+                                mode ??
+                                modeFromPuzzleKind(nextKind, form.params.mode),
+                            },
+                            kind: nextKind,
+                            tags: tagsFromParams(params),
+                          });
+                        }}
+                      />
+                    </div>
+                  ) : null}
                     </div>
                   </details>
                   </div>

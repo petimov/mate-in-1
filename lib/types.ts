@@ -1,5 +1,6 @@
 import type { BoardMarkup, PuzzleMarkup } from "@/lib/markup";
 import type { PracticeTag } from "@/lib/practice-tags";
+import type { PuzzleParams } from "@/lib/puzzle-params";
 
 export type PuzzleKind = "move" | "squares";
 
@@ -26,8 +27,10 @@ export interface Puzzle {
   markup?: PuzzleMarkup;
   chapterId?: string | null;
   sort?: number;
-  /** Motivace: Z = procvičení za výklad, P = políčka. */
+  /** Alias Motivace: role Z|P. Prefer params.role. */
   tags?: PracticeTag[];
+  /** Excel parametry A–P (Q–T computed). */
+  params?: PuzzleParams;
 }
 
 export interface PuzzleInput {
@@ -48,6 +51,7 @@ export interface PuzzleInput {
   sort?: number;
   allowEmptyMoves?: boolean;
   tags?: PracticeTag[];
+  params?: PuzzleParams;
 }
 
 export interface PuzzleRow {

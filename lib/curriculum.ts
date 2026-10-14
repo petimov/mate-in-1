@@ -1,3 +1,8 @@
+import {
+  isEmptyParams,
+  parsePuzzleParams,
+  type PuzzleParams,
+} from "@/lib/puzzle-params";
 import type { Puzzle } from "@/lib/types";
 
 export type CurriculumCourse = {
@@ -19,6 +24,8 @@ export type Chapter = {
   sort: number;
   kind?: ChapterKind;
   side?: ChapterSide;
+  /** Default Excel params for new/imported puzzles in this chapter. */
+  params?: PuzzleParams;
 };
 
 export type Curriculum = {
@@ -545,6 +552,7 @@ export function parseCurriculum(raw: unknown): Curriculum | null {
     const parentRaw = chapter.parentId ?? chapter.parent_id;
     const kindRaw = String(chapter.kind ?? "").trim();
     const side = parseChapterSide(chapter.side);
+    const params = parsePuzzleParams(chapter.params);
     chapters.push({
       id,
       courseId,
@@ -554,6 +562,7 @@ export function parseCurriculum(raw: unknown): Curriculum | null {
       sort: Number(chapter.sort) || 0,
       kind: kindRaw === "cviceni" ? "cviceni" : "vyklad",
       ...(side ? { side } : {}),
+      ...(!isEmptyParams(params) ? { params } : {}),
     });
   }
   if (courses.length === 0) return null;

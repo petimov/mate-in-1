@@ -27,6 +27,9 @@ export function ReviewSettings() {
   const [penaltySeconds, setPenaltySeconds] = useState(
     String(prefs.penaltySeconds),
   );
+  const [difficultyFormula, setDifficultyFormula] = useState(
+    prefs.difficultyFormula,
+  );
 
   useEffect(() => {
     setGoodText(formatIntervals(prefs.goodIntervals));
@@ -34,6 +37,7 @@ export function ReviewSettings() {
     setAgainTimes(String(prefs.againTimes));
     setWrongClearCount(String(prefs.wrongClearCount));
     setPenaltySeconds(String(prefs.penaltySeconds));
+    setDifficultyFormula(prefs.difficultyFormula);
   }, [prefs]);
 
   function saveGood(intervals: number[]) {
@@ -321,6 +325,25 @@ export function ReviewSettings() {
                 });
               }}
             />
+          </div>
+          <div className="grid gap-2 sm:col-span-2">
+            <Label htmlFor="diff-formula">Vzorec obtížnosti (T)</Label>
+            <Input
+              id="diff-formula"
+              value={difficultyFormula}
+              onChange={(event) => setDifficultyFormula(event.target.value)}
+              onBlur={() => {
+                setPrefs({
+                  ...prefs,
+                  difficultyFormula:
+                    difficultyFormula.trim() || prefs.difficultyFormula,
+                });
+              }}
+              placeholder="q + r*2 + s*3 + …"
+            />
+            <p className="text-xs text-muted-foreground">
+              Proměnné: q r s u b p z v o l ch
+            </p>
           </div>
         </div>
       </div>

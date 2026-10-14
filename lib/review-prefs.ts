@@ -20,6 +20,8 @@ export type ReviewPrefs = {
   wrongClearCount: number;
   /** +sekundy za fail v chapter-run (čas s penalizací). */
   penaltySeconds: number;
+  /** Excel T: vzorec obtížnosti (q,r,s,u,b,p,z,v,o,l,ch). */
+  difficultyFormula: string;
 };
 
 export const DEFAULT_REVIEW_PREFS: ReviewPrefs = {
@@ -32,6 +34,7 @@ export const DEFAULT_REVIEW_PREFS: ReviewPrefs = {
   wrongSnap: "auto",
   wrongClearCount: 2,
   penaltySeconds: 30,
+  difficultyFormula: "q + r*2 + s*3 + u*2 + b*2 + p*2 + z*2 + v + o + l + ch*2",
 };
 
 export function sanitizeLessonMode(raw: unknown): LessonMode {
@@ -161,6 +164,10 @@ export function normalizeReviewPrefs(raw: unknown): ReviewPrefs {
       "penaltySeconds" in data
         ? sanitizePenaltySeconds(data.penaltySeconds)
         : DEFAULT_REVIEW_PREFS.penaltySeconds,
+    difficultyFormula:
+      typeof data.difficultyFormula === "string" && data.difficultyFormula.trim()
+        ? data.difficultyFormula.trim().slice(0, 200)
+        : DEFAULT_REVIEW_PREFS.difficultyFormula,
   };
 }
 

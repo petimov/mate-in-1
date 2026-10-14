@@ -44,7 +44,9 @@ import {
   type Chapter,
   type Curriculum,
 } from "@/lib/curriculum";
+import { sortPuzzlesByKey } from "@/lib/puzzle-params";
 import { puzzleKind } from "@/lib/puzzles";
+import { getReviewPrefs } from "@/lib/review-prefs";
 import type { Puzzle } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -72,6 +74,7 @@ type CurriculumTreeProps = {
   onUndo: () => void;
   canUndo: boolean;
   undoLabel: string | null;
+  puzzleSortKey?: string;
 };
 
 export function CurriculumTree({
@@ -94,6 +97,7 @@ export function CurriculumTree({
   onUndo,
   canUndo,
   undoLabel,
+  puzzleSortKey = "sort",
 }: CurriculumTreeProps) {
   const [newCourse, setNewCourse] = useState("");
   const [newChapter, setNewChapter] = useState("");
@@ -817,6 +821,7 @@ export function CurriculumTree({
               onDeletePuzzles([puzzle.id]);
             }}
             depth={0}
+            puzzleSortKey={puzzleSortKey}
           />
         ))}
       </div>
@@ -859,6 +864,7 @@ function ChapterNode({
   onDuplicatePuzzle,
   onDeletePuzzle,
   depth,
+  puzzleSortKey = "sort",
 }: {
   chapter: Chapter;
   chapters: Chapter[];
@@ -898,9 +904,14 @@ function ChapterNode({
   onDuplicatePuzzle: (puzzle: Puzzle) => void;
   onDeletePuzzle: (puzzle: Puzzle) => void;
   depth: number;
+  puzzleSortKey?: string;
 }) {
   const kids = childChapters(chapters, chapter.id);
-  const items = puzzlesInChapter(puzzles, chapter.id, false, chapters);
+  const items = sortPuzzlesByKey(
+    puzzlesInChapter(puzzles, chapter.id, false, chapters),
+    puzzleSortKey,
+    getReviewPrefs().difficultyFormula,
+  );
   const branch = puzzlesInChapter(puzzles, chapter.id, true, chapters);
   const selectedSet = new Set(selectedPuzzleIds);
   const branchSelected = branch.filter((item) => selectedSet.has(item.id)).length;
@@ -1161,6 +1172,7 @@ function ChapterNode({
               onDuplicatePuzzle={onDuplicatePuzzle}
               onDeletePuzzle={onDeletePuzzle}
               depth={depth + 1}
+              puzzleSortKey={puzzleSortKey}
             />
               ) : (
             <PuzzleRow
@@ -1237,6 +1249,16 @@ function PuzzleRow({
   showCopy?: boolean;
   depth: number;
 }) {
+  const num = (puzzle.sort ?? 0) + 1;
+  const badge = [
+    puzzle.params?.piece,
+    puzzle.params?.color === "C" ? "Č" : puzzle.params?.color,
+    puzzle.params?.king,
+    puzzle.params?.role,
+    puzzle.params?.mode ?? (puzzleKind(puzzle) === "squares" ? "P" : "T"),
+  ]
+    .filter(Boolean)
+    .join("");
   return (
     <div
       draggable
@@ -1282,6 +1304,20 @@ function PuzzleRow({
         ) : (
           <GripVertical className="size-3 shrink-0 text-muted-foreground" />
         )}
+        {badge ? (
+          <span
+            className="shrink-0 font-mono text-[10px] tabular-nums tracking-tight text-muted-foreground"
+            title="Parametry A–E"
+          >
+            {badge}
+          </span>
+        ) : null}
+        <span
+          className="w-5 shrink-0 text-right text-[12px] font-bold tabular-nums text-foreground"
+          title="Číslo v kapitole"
+        >
+          {num}
+        </span>
         {renaming ? (
           <Input
             value={renameValue}
@@ -1312,11 +1348,7 @@ function PuzzleRow({
           >
             <Plus className="size-3" />
           </IconBtn>
-        ) : (
-          <span className="w-5 text-center text-[12px] uppercase text-muted-foreground">
-            {puzzleKind(puzzle) === "squares" ? "P" : "T"}
-          </span>
-        )}
+        ) : null}
         <div
           className={cn(
             "items-center",

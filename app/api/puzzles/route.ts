@@ -56,6 +56,7 @@ export async function POST(request: Request) {
     sort: typeof body.sort === "number" ? body.sort : 0,
     allowEmptyMoves: Boolean(body.allowEmptyMoves),
     tags: body.tags,
+    params: body.params,
   };
   const invalid = validatePuzzleInput(input);
   if (invalid) {
