@@ -1,3 +1,4 @@
+import { serializePuzzleMarkup } from "@/lib/markup";
 import {
   isEmptyParams,
   parsePuzzleParams,
@@ -12,8 +13,17 @@ export type CurriculumCourse = {
   sort: number;
 };
 
-export type ChapterKind = "vyklad" | "cviceni";
+/** C = cvičení (jednotažka), V = výklad, F = vzít figuru, M = možné tahy. */
+export const CHAPTER_KINDS = [
+  "jednotazka",
+  "vyklad",
+  "vzit_figuru",
+  "mozne_tahy",
+] as const;
+export type ChapterKind = (typeof CHAPTER_KINDS)[number];
 export type ChapterSide = "white" | "black";
+
+export const VYKLAD_MAX_MOVES = 10;
 
 export type Chapter = {
   id: string;
@@ -63,7 +73,7 @@ function ch(
   slug: string,
   title: string,
   sort: number,
-  kind: ChapterKind = "vyklad",
+  kind: ChapterKind = "jednotazka",
 ): Chapter {
   return { id, courseId: COURSE_SKOLA, parentId, slug, title, sort, kind };
 }
@@ -78,21 +88,21 @@ export const DEMO_CURRICULUM: Curriculum = {
     },
   ],
   chapters: [
-    ch(CH_MAT, null, "mat-v-1", "Mat v 1", 0),
-    ch(CH_MAT_VEZI, CH_MAT, "mat-vezi", "Mat věží", 0),
-    ch(CH_MAT_VEZI_1, CH_MAT_VEZI, "mat-vezi-1", "Mat věží 1", 0),
-    ch(CH_MAT_VEZI_2, CH_MAT_VEZI, "mat-vezi-2", "Mat věží 2", 1),
-    ch(CH_MAT_STRELCEM, CH_MAT, "mat-strelcem", "Mat střelcem", 1),
-    ch(CH_MAT_STRELCEM_1, CH_MAT_STRELCEM, "mat-strelcem-1", "Mat střelcem 1", 0),
-    ch(CH_MAT_STRELCEM_2, CH_MAT_STRELCEM, "mat-strelcem-2", "Mat střelcem 2", 1),
-    ch(CH_MAT_KONEM, CH_MAT, "mat-konem", "Mat koněm", 2),
-    ch(CH_MAT_KONEM_1, CH_MAT_KONEM, "mat-konem-1", "Mat koněm 1", 0),
-    ch(CH_MAT_KONEM_2, CH_MAT_KONEM, "mat-konem-2", "Mat koněm 2", 1),
-    ch(CH_MAT_DAMOU, CH_MAT, "mat-damou", "Mat dámou", 3),
-    ch(CH_MAT_DAMOU_1, CH_MAT_DAMOU, "mat-damou-1", "Mat dámou 1", 0),
-    ch(CH_MAT_DAMOU_2, CH_MAT_DAMOU, "mat-damou-2", "Mat dámou 2", 1),
-    ch(CH_FIGURY, null, "tahy-figur", "Tahy figur", 1, "cviceni"),
-    ch(CH_SACH, null, "sach-a-kryti", "Šach a krytí", 2, "cviceni"),
+    ch(CH_MAT, null, "mat-v-1", "Mat v 1", 0, "vyklad"),
+    ch(CH_MAT_VEZI, CH_MAT, "mat-vezi", "Mat věží", 0, "vyklad"),
+    ch(CH_MAT_VEZI_1, CH_MAT_VEZI, "mat-vezi-1", "Mat věží 1", 0, "vyklad"),
+    ch(CH_MAT_VEZI_2, CH_MAT_VEZI, "mat-vezi-2", "Mat věží 2", 1, "vyklad"),
+    ch(CH_MAT_STRELCEM, CH_MAT, "mat-strelcem", "Mat střelcem", 1, "vyklad"),
+    ch(CH_MAT_STRELCEM_1, CH_MAT_STRELCEM, "mat-strelcem-1", "Mat střelcem 1", 0, "vyklad"),
+    ch(CH_MAT_STRELCEM_2, CH_MAT_STRELCEM, "mat-strelcem-2", "Mat střelcem 2", 1, "vyklad"),
+    ch(CH_MAT_KONEM, CH_MAT, "mat-konem", "Mat koněm", 2, "vyklad"),
+    ch(CH_MAT_KONEM_1, CH_MAT_KONEM, "mat-konem-1", "Mat koněm 1", 0, "vyklad"),
+    ch(CH_MAT_KONEM_2, CH_MAT_KONEM, "mat-konem-2", "Mat koněm 2", 1, "vyklad"),
+    ch(CH_MAT_DAMOU, CH_MAT, "mat-damou", "Mat dámou", 3, "vyklad"),
+    ch(CH_MAT_DAMOU_1, CH_MAT_DAMOU, "mat-damou-1", "Mat dámou 1", 0, "vyklad"),
+    ch(CH_MAT_DAMOU_2, CH_MAT_DAMOU, "mat-damou-2", "Mat dámou 2", 1, "vyklad"),
+    ch(CH_FIGURY, null, "tahy-figur", "Tahy figur", 1, "jednotazka"),
+    ch(CH_SACH, null, "sach-a-kryti", "Šach a krytí", 2, "jednotazka"),
   ],
 };
 
@@ -523,6 +533,142 @@ export function isVykladGroup(
   return vykladGroupChapters(chapters, chapterId).length >= 2;
 }
 
+/**
+ * Otisk výkladu — shoda = ještě nezměněno oproti předchozí.
+ * Tah není povinný: stačí šipky, políčka, FEN, vysvětlení…
+ */
+export function puzzleLineKey(
+  puzzle: Pick<
+    Puzzle,
+    "fen" | "moves" | "markup" | "explanation" | "wrongReplies"
+  > | null | undefined,
+): string {
+  if (!puzzle) return "";
+  return JSON.stringify({
+    fen: String(puzzle.fen ?? "").trim(),
+    moves: puzzle.moves ?? [],
+    markup: serializePuzzleMarkup(puzzle.markup),
+    explanation: String(puzzle.explanation ?? "").trim(),
+    wrong: (puzzle.wrongReplies ?? []).map((reply) => ({
+      answer: reply.answer,
+      text: reply.text,
+      markup: reply.markup ?? null,
+    })),
+  });
+}
+
+function vykladPnIndex(title: string): number {
+  const match = title.match(/P(\d+)\s*$/i);
+  return match ? Number(match[1]) : 0;
+}
+
+/** Pn list: S# pod Pn → Pn; jinak kapitola sama. */
+export function vykladGroupMemberChapter(
+  chapters: Chapter[],
+  chapterId: string | null | undefined,
+): Chapter | null {
+  if (!chapterId) return null;
+  const leaf = chapters.find((item) => item.id === chapterId);
+  if (!leaf) return null;
+  if (/S\d+\s*$/i.test(leaf.title) && leaf.parentId) {
+    const parent = chapters.find((item) => item.id === leaf.parentId);
+    if (parent && isVykladGroupMemberTitle(parent.title)) return parent;
+    if (parent && isBrokenVykladGroupTitle(parent.title)) {
+      const siblingPn = childChapters(
+        chapters,
+        parent.id,
+        parent.courseId,
+      ).find((item) => isVykladGroupMemberTitle(item.title));
+      return siblingPn ?? leaf;
+    }
+  }
+  return leaf;
+}
+
+/** Členové groupy seřazení P1 → P2 → … */
+export function orderedVykladGroupMembers(
+  chapters: Chapter[],
+  chapterId: string | null | undefined,
+): Chapter[] {
+  return [...vykladGroupChapters(chapters, chapterId)].sort(
+    (a, b) =>
+      vykladPnIndex(a.title) - vykladPnIndex(b.title) ||
+      a.sort - b.sort ||
+      a.title.localeCompare(b.title, "cs"),
+  );
+}
+
+export type VykladDuplicateGate =
+  | { ok: true; source: Puzzle; member: Chapter }
+  | { ok: false; reason: string };
+
+/**
+ * Další pozice ve skupině (0→1→2): jen z poslední Pn,
+ * a jen když se obsah liší (značky / FEN / tahy / text — tah není povinný).
+ */
+export function canDuplicateVykladGroup(
+  chapters: Chapter[],
+  puzzles: Puzzle[],
+  fromChapterId: string | null | undefined,
+  livePuzzle?: Puzzle | null,
+): VykladDuplicateGate {
+  const member = vykladGroupMemberChapter(chapters, fromChapterId);
+  if (!member) {
+    return { ok: false, reason: "Stejná úloha potřebuje kapitolu." };
+  }
+  if (chapterKindOf(member) !== "vyklad") {
+    return { ok: false, reason: "Groupa jen u výkladu." };
+  }
+
+  const stored =
+    puzzlesInChapter(puzzles, member.id, false, chapters)[0] ??
+    (fromChapterId
+      ? puzzlesInChapter(puzzles, fromChapterId, false, chapters)[0]
+      : undefined);
+  const liveMatches =
+    livePuzzle &&
+    (livePuzzle.id === stored?.id ||
+      livePuzzle.chapterId === member.id ||
+      livePuzzle.chapterId === fromChapterId);
+  const source = liveMatches ? livePuzzle : stored;
+  if (!source || !String(source.fen ?? "").trim()) {
+    return {
+      ok: false,
+      reason: "Nejdřív ulož platnou pozici, pak další ve skupině.",
+    };
+  }
+
+  const ordered = orderedVykladGroupMembers(chapters, member.id).filter(
+    (item) => isVykladGroupMemberTitle(item.title),
+  );
+
+  if (ordered.length === 0) {
+    return { ok: true, source, member };
+  }
+
+  const last = ordered[ordered.length - 1]!;
+  if (member.id !== last.id) {
+    return {
+      ok: false,
+      reason: "Jen z poslední pozice ve skupině (posloupnost 0→1→2).",
+    };
+  }
+
+  if (ordered.length >= 2) {
+    const prev = ordered[ordered.length - 2]!;
+    const prevPuzzle = puzzlesInChapter(puzzles, prev.id, false, chapters)[0];
+    if (prevPuzzle && puzzleLineKey(source) === puzzleLineKey(prevPuzzle)) {
+      return {
+        ok: false,
+        reason:
+          "Nejdřív změň výklad (šipky, políčka, FEN…), pak další ve skupině.",
+      };
+    }
+  }
+
+  return { ok: true, source, member };
+}
+
 export function parseCurriculum(raw: unknown): Curriculum | null {
   if (!raw || typeof raw !== "object") return null;
   const row = raw as { courses?: unknown; chapters?: unknown };
@@ -560,7 +706,7 @@ export function parseCurriculum(raw: unknown): Curriculum | null {
       slug: String(chapter.slug ?? slugify(title)),
       title,
       sort: Number(chapter.sort) || 0,
-      kind: kindRaw === "cviceni" ? "cviceni" : "vyklad",
+      kind: parseChapterKind(kindRaw),
       ...(side ? { side } : {}),
       ...(!isEmptyParams(params) ? { params } : {}),
     });
@@ -569,17 +715,91 @@ export function parseCurriculum(raw: unknown): Curriculum | null {
   return { courses, chapters };
 }
 
+/** Legacy `cviceni` → `jednotazka`. Bez kind → jednotažka (ne výklad — schová import). */
+export function parseChapterKind(raw: unknown): ChapterKind {
+  const v = String(raw ?? "")
+    .trim()
+    .toLowerCase();
+  if (v === "cviceni" || v === "jednotazka" || v === "j" || v === "c")
+    return "jednotazka";
+  if (v === "vzit_figuru" || v === "f") return "vzit_figuru";
+  if (v === "mozne_tahy" || v === "m") return "mozne_tahy";
+  if (v === "vyklad" || v === "v") return "vyklad";
+  return "jednotazka";
+}
+
 export function chapterKindOf(
   chapter?: Pick<Chapter, "kind"> | null,
 ): ChapterKind {
-  return chapter?.kind === "cviceni" ? "cviceni" : "vyklad";
+  return parseChapterKind(chapter?.kind);
+}
+
+export function chapterKindShort(kind?: ChapterKind | null): string {
+  switch (chapterKindOf({ kind: kind ?? undefined })) {
+    case "jednotazka":
+      return "C";
+    case "vzit_figuru":
+      return "F";
+    case "mozne_tahy":
+      return "M";
+    default:
+      return "V";
+  }
+}
+
+export function chapterKindLabel(kind?: ChapterKind | null): string {
+  switch (chapterKindOf({ kind: kind ?? undefined })) {
+    case "jednotazka":
+      return "Cvičení";
+    case "vzit_figuru":
+      return "Vzít figuru";
+    case "mozne_tahy":
+      return "Možné tahy";
+    default:
+      return "Výklad";
+  }
+}
+
+/** 1 tah + ŠT (jednotažka / vzít figuru). */
+export function isDrillChapter(
+  chapter?: Pick<Chapter, "kind"> | null,
+): boolean {
+  const kind = chapterKindOf(chapter);
+  return kind === "jednotazka" || kind === "vzit_figuru";
+}
+
+/** Označování polí. */
+export function isSquaresChapter(
+  chapter?: Pick<Chapter, "kind"> | null,
+): boolean {
+  return chapterKindOf(chapter) === "mozne_tahy";
+}
+
+/** N tahů + markup, bez ŠT. */
+export function isLineChapter(
+  chapter?: Pick<Chapter, "kind"> | null,
+): boolean {
+  return chapterKindOf(chapter) === "vyklad";
+}
+
+/** Bulk Excel parametry / Motivace kandidát. */
+export function isParamsChapter(
+  chapter?: Pick<Chapter, "kind"> | null,
+): boolean {
+  return isDrillChapter(chapter);
+}
+
+export function puzzleKindForChapter(
+  chapter?: Pick<Chapter, "kind"> | null,
+): "move" | "squares" {
+  return isSquaresChapter(chapter) ? "squares" : "move";
 }
 
 export function isVykladEditorChapter(
   chapter?: Pick<Chapter, "kind" | "id"> | null,
   chapters: Chapter[] = [],
 ): boolean {
-  if (!chapter || chapterKindOf(chapter) !== "vyklad") return false;
+  if (!chapter || !isLineChapter(chapter)) return false;
   return childChapters(chapters, chapter.id).length === 0;
 }
 
@@ -587,13 +807,15 @@ export function isVykladFolderChapter(
   chapter: Pick<Chapter, "kind" | "parentId" | "id"> | null | undefined,
   chapters: Chapter[],
 ): boolean {
-  if (!chapter || chapterKindOf(chapter) !== "vyklad") return false;
+  if (!chapter || !isLineChapter(chapter)) return false;
   if (!chapter.parentId) return true;
   return childChapters(chapters, chapter.id).length > 0;
 }
 
 export function nextChapterKind(kind?: ChapterKind): ChapterKind {
-  return kind === "cviceni" ? "vyklad" : "cviceni";
+  const current = chapterKindOf({ kind });
+  const index = CHAPTER_KINDS.indexOf(current);
+  return CHAPTER_KINDS[(index + 1) % CHAPTER_KINDS.length] ?? "jednotazka";
 }
 
 export function parseChapterSide(value: unknown): ChapterSide | undefined {

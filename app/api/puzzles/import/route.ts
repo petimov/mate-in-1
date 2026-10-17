@@ -1,10 +1,16 @@
 import { NextResponse } from "next/server";
 
 import { isAdminAuthenticated } from "@/lib/admin-auth";
-import { existingPuzzleIndex, insertPuzzleRows } from "@/lib/puzzle-store";
+import {
+  existingPuzzleIndex,
+  insertPuzzleRows,
+  puzzleKey,
+} from "@/lib/puzzle-store";
 import { validatePuzzleInput } from "@/lib/puzzles";
 import { createServerSupabase } from "@/lib/supabase";
 import type { PuzzleInput } from "@/lib/types";
+
+const BATCH = 40;
 
 export async function POST(request: Request) {
   if (!(await isAdminAuthenticated())) {
@@ -43,7 +49,7 @@ export async function POST(request: Request) {
   let duplicates = 0;
 
   for (const puzzle of valid) {
-    const key = `${puzzle.fen.trim()}|${puzzle.moves[0] ?? ""}`;
+    const key = puzzleKey(puzzle.fen, puzzle.moves[0] ?? "");
     const found = seen.get(key);
     if (!found) {
       seen.set(key, { id: "", chapterId: puzzle.chapterId ?? null });
@@ -81,16 +87,39 @@ export async function POST(request: Request) {
     });
   }
 
-  const { data, error } = await insertPuzzleRows(supabase, fresh);
-  if (error) {
-    return NextResponse.json(
-      { error: error.message ?? "Import failed." },
-      { status: 500 },
-    );
+  let imported = 0;
+  for (let i = 0; i < fresh.length; i += BATCH) {
+    const chunk = fresh.slice(i, i + BATCH);
+    const { data, error } = await insertPuzzleRows(supabase, chunk);
+    if (error) {
+      return NextResponse.json(
+        {
+          error: error.message ?? "Import failed.",
+          imported,
+          moved,
+          duplicates,
+          invalid,
+        },
+        { status: 500 },
+      );
+    }
+    if (data.length === 0) {
+      return NextResponse.json(
+        {
+          error: "Insert nevrátil řádky (zkontroluj chapter_id / RLS).",
+          imported,
+          moved,
+          duplicates,
+          invalid,
+        },
+        { status: 500 },
+      );
+    }
+    imported += data.length;
   }
 
   return NextResponse.json({
-    imported: data.length || fresh.length,
+    imported,
     moved,
     duplicates,
     invalid,

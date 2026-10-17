@@ -30,18 +30,36 @@ function dropColumn<T extends Record<string, unknown>>(
   return next;
 }
 
+const LIST_PAGE = 1000;
+/** Sloupce, které se při insertu nesmí zahodit (retry missing column). */
+const INSERT_KEEP = new Set(["title", "fen", "moves", "chapter_id", "sort"]);
+
 export async function listPuzzles(
   supabase: SupabaseClient,
 ): Promise<{ puzzles: Puzzle[]; source: "supabase" | "demo" }> {
   for (const select of SELECTS) {
-    const { data, error } = await supabase
-      .from("puzzles")
-      .select(select)
-      .order("created_at", { ascending: true });
-    if (error || !data) continue;
+    const rows: PuzzleRow[] = [];
+    let from = 0;
+    let selectFailed = false;
+    for (;;) {
+      const to = from + LIST_PAGE - 1;
+      const { data, error } = await supabase
+        .from("puzzles")
+        .select(select)
+        .order("created_at", { ascending: true })
+        .range(from, to);
+      if (error || !data) {
+        selectFailed = from === 0;
+        break;
+      }
+      rows.push(...(data as unknown as PuzzleRow[]));
+      if (data.length < LIST_PAGE) break;
+      from += LIST_PAGE;
+    }
+    if (selectFailed) continue;
     return {
-      puzzles: sortPuzzles((data as unknown as PuzzleRow[]).map(mapPuzzleRow)),
-      source: data.length > 0 ? "supabase" : "demo",
+      puzzles: sortPuzzles(rows.map(mapPuzzleRow)),
+      source: rows.length > 0 ? "supabase" : "demo",
     };
   }
   return { puzzles: [], source: "demo" };
@@ -57,14 +75,25 @@ export async function insertPuzzleRows(
     const { data, error } = await supabase
       .from("puzzles")
       .insert(rows)
-      .select("id,title,fen,moves,hint,explanation,video_url");
+      .select("id,title,fen,moves,chapter_id,sort,hint,explanation,video_url");
 
     if (!error) {
       return { data: (data as unknown as PuzzleRow[] | null) ?? [], error: null };
     }
 
     const column = missingColumn(error.message);
-    if (!column) return { data: [], error };
+    if (column === "chapter_id") {
+      return {
+        data: [],
+        error: {
+          message:
+            "V tabulce puzzles chybí sloupec chapter_id. V Supabase → SQL Editor spusť:\n" +
+            "alter table public.puzzles add column if not exists chapter_id text;\n" +
+            "alter table public.puzzles add column if not exists sort int not null default 0;",
+        },
+      };
+    }
+    if (!column || INSERT_KEEP.has(column)) return { data: [], error };
 
     rows = rows.map((row) => dropColumn(row, column));
   }
@@ -126,13 +155,24 @@ export async function savePuzzleRow(
   return { data: null, error: { message: "Úlohu nešlo uložit." } };
 }
 
+const DELETE_BATCH = 80;
+
 export async function deletePuzzleRows(
   supabase: SupabaseClient,
   ids: string[],
 ) {
-  if (!ids.length) return { error: null };
-  const { error } = await supabase.from("puzzles").delete().in("id", ids);
-  return { error };
+  if (!ids.length) return { error: null, deleted: 0 };
+  let deleted = 0;
+  for (let i = 0; i < ids.length; i += DELETE_BATCH) {
+    const chunk = ids.slice(i, i + DELETE_BATCH);
+    const { error, count } = await supabase
+      .from("puzzles")
+      .delete({ count: "exact" })
+      .in("id", chunk);
+    if (error) return { error, deleted };
+    deleted += count ?? chunk.length;
+  }
+  return { error: null, deleted };
 }
 
 export function puzzleKey(fen: string, move?: string | null) {
@@ -140,17 +180,24 @@ export function puzzleKey(fen: string, move?: string | null) {
 }
 
 export async function existingPuzzleIndex(supabase: SupabaseClient) {
-  const { data, error } = await supabase
-    .from("puzzles")
-    .select("id,fen,moves,chapter_id");
   const map = new Map<string, { id: string; chapterId: string | null }>();
-  if (error || !data) return map;
-  for (const row of data) {
-    const move = ((row.moves as string[] | null) ?? [])[0] ?? "";
-    map.set(puzzleKey(row.fen as string, move), {
-      id: row.id as string,
-      chapterId: (row.chapter_id as string | null) ?? null,
-    });
+  let from = 0;
+  for (;;) {
+    const to = from + LIST_PAGE - 1;
+    const { data, error } = await supabase
+      .from("puzzles")
+      .select("id,fen,moves,chapter_id")
+      .range(from, to);
+    if (error || !data) break;
+    for (const row of data) {
+      const move = ((row.moves as string[] | null) ?? [])[0] ?? "";
+      map.set(puzzleKey(row.fen as string, move), {
+        id: row.id as string,
+        chapterId: (row.chapter_id as string | null) ?? null,
+      });
+    }
+    if (data.length < LIST_PAGE) break;
+    from += LIST_PAGE;
   }
   return map;
 }

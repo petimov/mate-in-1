@@ -1,5 +1,8 @@
 /** Excel parametry A–T pro jednotažky (cvicení). */
 
+import { applyUci, normalizeUci, safeChess } from "@/lib/chess";
+import type { Square } from "chess.js";
+
 export const PARAM_PIECES = ["V", "D", "S", "J", "P", "K"] as const;
 export type ParamPiece = (typeof PARAM_PIECES)[number];
 
@@ -17,8 +20,14 @@ export type ParamRole = (typeof PARAM_ROLES)[number];
 export const PARAM_MODES = ["T", "P", "S"] as const;
 export type ParamMode = (typeof PARAM_MODES)[number];
 
+/** F: V = matová figura vedle krále, D = dál. */
 export const PARAM_DISTANCES = ["V", "D"] as const;
 export type ParamDistance = (typeof PARAM_DISTANCES)[number];
+
+export const PARAM_DISTANCE_LABEL: Record<ParamDistance, string> = {
+  V: "vedle krále",
+  D: "dál",
+};
 
 export const PARAM_FLAG_KEYS = [
   "U",
@@ -32,6 +41,20 @@ export const PARAM_FLAG_KEYS = [
 ] as const;
 export type ParamFlagKey = (typeof PARAM_FLAG_KEYS)[number];
 
+/** Průchod autora: 0 = program, 1+ = lidské kontroly. */
+export type AuthorQaTrack = {
+  passes: number;
+  /** Úmyslné prázdno (zkontrolováno — nic tam nemá být). */
+  none?: boolean;
+  /** Finální — při kontrole přeskočit. */
+  done?: boolean;
+};
+
+export type AuthorQa = {
+  flags?: AuthorQaTrack;
+  wrong?: AuthorQaTrack;
+};
+
 export type PuzzleParams = {
   piece?: ParamPiece;
   color?: ParamColor;
@@ -40,6 +63,8 @@ export type PuzzleParams = {
   mode?: ParamMode;
   distance?: ParamDistance;
   flags?: Partial<Record<ParamFlagKey, boolean>>;
+  /** Kontrola autora: flagy + ŠT. */
+  qa?: AuthorQa;
 };
 
 export const PARAM_PIECE_LABEL: Record<ParamPiece, string> = {
@@ -145,6 +170,72 @@ function parseFlags(raw: unknown): PuzzleParams["flags"] {
   return any ? out : undefined;
 }
 
+export function parseAuthorQaTrack(raw: unknown): AuthorQaTrack | undefined {
+  if (!raw || typeof raw !== "object") return undefined;
+  const row = raw as Record<string, unknown>;
+  const hasPasses = "passes" in row;
+  const passes = Math.max(0, Math.floor(Number(row.passes) || 0));
+  const none = row.none === true ? true : undefined;
+  const done = row.done === true ? true : undefined;
+  if (!hasPasses && !none && !done) return undefined;
+  const out: AuthorQaTrack = { passes };
+  if (none) out.none = true;
+  if (done) out.done = true;
+  return out;
+}
+
+export function parseAuthorQa(raw: unknown): AuthorQa | undefined {
+  if (!raw || typeof raw !== "object") return undefined;
+  const row = raw as Record<string, unknown>;
+  const flags = parseAuthorQaTrack(row.flags);
+  const wrong = parseAuthorQaTrack(row.wrong);
+  if (!flags && !wrong) return undefined;
+  const out: AuthorQa = {};
+  if (flags) out.flags = flags;
+  if (wrong) out.wrong = wrong;
+  return out;
+}
+
+export function patchAuthorQa(
+  qa: AuthorQa | undefined,
+  track: "flags" | "wrong",
+  next: AuthorQaTrack | undefined,
+): AuthorQa | undefined {
+  const out: AuthorQa = { ...(qa ?? {}) };
+  if (!next) delete out[track];
+  else out[track] = next;
+  if (!out.flags && !out.wrong) return undefined;
+  return out;
+}
+
+/** Nižší = dřív v kontrole. Hotovo až nakonec. */
+export function authorQaTrackScore(
+  track: AuthorQaTrack | undefined,
+  hasContent: boolean,
+): number {
+  const passes = track?.passes ?? 0;
+  if (track?.done) return 10_000 + passes;
+  if (track?.none) return 5_000 + passes;
+  if (!hasContent) return passes;
+  if (passes === 0) return 100;
+  return 1_000 + passes;
+}
+
+export function authorQaSortScore(input: {
+  params?: PuzzleParams | null;
+  wrongCount?: number;
+}): number {
+  const qa = input.params?.qa;
+  const hasFlags = Boolean(
+    input.params?.flags && Object.values(input.params.flags).some(Boolean),
+  );
+  const hasWrong = (input.wrongCount ?? 0) > 0;
+  return Math.min(
+    authorQaTrackScore(qa?.flags, hasFlags),
+    authorQaTrackScore(qa?.wrong, hasWrong),
+  );
+}
+
 /** Normalize unknown JSON / partial into PuzzleParams. */
 export function parsePuzzleParams(raw: unknown): PuzzleParams {
   if (Array.isArray(raw)) {
@@ -165,6 +256,7 @@ export function parsePuzzleParams(raw: unknown): PuzzleParams {
   const mode = asMode(row.mode);
   const distance = asDistance(row.distance);
   const flags = parseFlags(row.flags);
+  const qa = parseAuthorQa(row.qa);
   if (piece) params.piece = piece;
   if (color) params.color = color;
   if (king) params.king = king;
@@ -172,6 +264,7 @@ export function parsePuzzleParams(raw: unknown): PuzzleParams {
   if (mode) params.mode = mode;
   if (distance) params.distance = distance;
   if (flags) params.flags = flags;
+  if (qa) params.qa = qa;
   return params;
 }
 
@@ -180,7 +273,8 @@ export function isEmptyParams(params?: PuzzleParams | null): boolean {
   if (params.piece || params.color || params.king || params.role || params.mode || params.distance) {
     return false;
   }
-  return !params.flags || !Object.values(params.flags).some(Boolean);
+  if (params.flags && Object.values(params.flags).some(Boolean)) return false;
+  return !params.qa;
 }
 
 export function mergeParams(
@@ -197,6 +291,10 @@ export function mergeParams(
   };
   if (cleanedFlags) out.flags = cleanedFlags;
   else delete out.flags;
+  // QA se neslučuje z bulk kapitoly — zůstává z base, pokud patch nemá.
+  if (b.qa) out.qa = b.qa;
+  else if (a.qa) out.qa = a.qa;
+  else delete out.qa;
   return out;
 }
 
@@ -260,8 +358,26 @@ export function paramsBadge(params?: PuzzleParams | null): string {
 /** Sort key helpers for admin list. */
 export function paramSortValue(
   params: PuzzleParams | undefined,
-  key: keyof PuzzleParams | ParamFlagKey | "sort" | "title" | "q" | "r" | "s" | "t",
-  puzzle?: { sort?: number; title?: string; fen?: string; wrongCount?: number; arrowPieces?: number; difficulty?: number },
+  key:
+    | keyof PuzzleParams
+    | ParamFlagKey
+    | "sort"
+    | "title"
+    | "q"
+    | "r"
+    | "s"
+    | "t"
+    | "qa"
+    | "qaFlags"
+    | "qaWrong",
+  puzzle?: {
+    sort?: number;
+    title?: string;
+    fen?: string;
+    wrongCount?: number;
+    arrowPieces?: number;
+    difficulty?: number;
+  },
 ): string | number {
   if (key === "sort") return puzzle?.sort ?? 0;
   if (key === "title") return (puzzle?.title ?? "").toLowerCase();
@@ -269,6 +385,24 @@ export function paramSortValue(
   if (key === "r") return puzzle?.arrowPieces ?? 0;
   if (key === "s") return puzzle?.wrongCount ?? 0;
   if (key === "t") return puzzle?.difficulty ?? 0;
+  if (key === "qa") {
+    return authorQaSortScore({
+      params,
+      wrongCount: puzzle?.wrongCount,
+    });
+  }
+  if (key === "qaFlags") {
+    const hasFlags = Boolean(
+      params?.flags && Object.values(params.flags).some(Boolean),
+    );
+    return authorQaTrackScore(params?.qa?.flags, hasFlags);
+  }
+  if (key === "qaWrong") {
+    return authorQaTrackScore(
+      params?.qa?.wrong,
+      (puzzle?.wrongCount ?? 0) > 0,
+    );
+  }
   if (
     key === "U" ||
     key === "B" ||
@@ -295,9 +429,70 @@ export function countPiecesOnFen(fen: string): number {
   return n;
 }
 
-/** Default difficulty formula placeholders: q,r,s,u,b,p,z,v,o,l,ch */
+export function chebyshevDistance(a: string, b: string): number {
+  if (a.length < 2 || b.length < 2) return Number.POSITIVE_INFINITY;
+  return Math.max(
+    Math.abs(a.charCodeAt(0) - b.charCodeAt(0)),
+    Math.abs(Number(a[1]) - Number(b[1])),
+  );
+}
+
+/**
+ * V/D z matu: po řešení min Chebyshev vzdálenost šachující figury k soupeřovu králi.
+ * 1 → V (vedle), >1 → D (dál).
+ */
+export function inferDistance(
+  fen: string,
+  solutionUci?: string | null,
+): ParamDistance | undefined {
+  const uci = normalizeUci(solutionUci ?? "");
+  if (!fen.trim() || uci.length < 4) return undefined;
+  const chess = safeChess(fen);
+  if (!chess || !applyUci(chess, uci)) return undefined;
+
+  const defender = chess.turn();
+  const attacker = defender === "w" ? "b" : "w";
+  let kingSq: Square | null = null;
+  const board = chess.board();
+  for (let rank = 0; rank < 8; rank += 1) {
+    for (let file = 0; file < 8; file += 1) {
+      const piece = board[rank]?.[file];
+      if (piece?.type === "k" && piece.color === defender) {
+        kingSq = `${"abcdefgh"[file]}${8 - rank}` as Square;
+      }
+    }
+  }
+  if (!kingSq) return undefined;
+
+  const checkers = chess.attackers(kingSq, attacker);
+  const squares = checkers.length > 0 ? checkers : [uci.slice(2, 4) as Square];
+  let min = Number.POSITIVE_INFINITY;
+  for (const sq of squares) {
+    min = Math.min(min, chebyshevDistance(sq, kingSq));
+  }
+  if (!Number.isFinite(min) || min <= 0) return undefined;
+  return min === 1 ? "V" : "D";
+}
+
+/** Doplní distance, pokud chybí. */
+export function withInferredDistance(
+  params: PuzzleParams | undefined,
+  fen: string,
+  solutionUci?: string | null,
+): PuzzleParams {
+  const base = parsePuzzleParams(params ?? {});
+  if (base.distance) return base;
+  const distance = inferDistance(fen, solutionUci);
+  if (!distance) return base;
+  return { ...base, distance };
+}
+
+/**
+ * Petra: T = (1+0,1*(q-3)) * (1+0,25*s) * r * (1+f)
+ * f = počet aktivních flagů. Bez šipek je r=0 → T=0 (dokud není markup).
+ */
 export const DEFAULT_DIFFICULTY_FORMULA =
-  "q + r*2 + s*3 + u*2 + b*2 + p*2 + z*2 + v + o + l + ch*2";
+  "(1 + 0.1*(q - 3)) * (1 + 0.25*s) * r * (1 + f)";
 
 export function evalDifficultyFormula(
   formula: string,
@@ -329,19 +524,29 @@ export function difficultyVars(input: {
   wrongCount: number;
   flags?: PuzzleParams["flags"];
 }): Record<string, number> {
-  const f = input.flags ?? {};
+  const flags = input.flags ?? {};
+  const u = flags.U ? 1 : 0;
+  const b = flags.B ? 1 : 0;
+  const p = flags.P ? 1 : 0;
+  const z = flags.Z ? 1 : 0;
+  const v = flags.V ? 1 : 0;
+  const o = flags.O ? 1 : 0;
+  const l = flags.L ? 1 : 0;
+  const ch = flags.CH ? 1 : 0;
   return {
     q: countPiecesOnFen(input.fen),
     r: input.arrowPieces,
     s: input.wrongCount,
-    u: f.U ? 1 : 0,
-    b: f.B ? 1 : 0,
-    p: f.P ? 1 : 0,
-    z: f.Z ? 1 : 0,
-    v: f.V ? 1 : 0,
-    o: f.O ? 1 : 0,
-    l: f.L ? 1 : 0,
-    ch: f.CH ? 1 : 0,
+    u,
+    b,
+    p,
+    z,
+    v,
+    o,
+    l,
+    ch,
+    /** Součet flagů — pro (1+f). */
+    f: u + b + p + z + v + o + l + ch,
   };
 }
 
@@ -389,7 +594,10 @@ export type PuzzleSortKey =
   | "q"
   | "r"
   | "s"
-  | "t";
+  | "t"
+  | "qa"
+  | "qaFlags"
+  | "qaWrong";
 
 export function sortPuzzlesByKey<
   T extends {

@@ -45,15 +45,20 @@ import {
   bindPuzzlesToCurriculum,
   childChapters,
   chapterChain,
+  chapterKindLabel,
   chapterKindOf,
   chapterSideOf,
   childCopyTitle,
-  isBrokenVykladGroupTitle,
+  canDuplicateVykladGroup,
+  isDrillChapter,
+  isParamsChapter,
+  isSquaresChapter,
   isVykladEditorChapter,
   isVykladGroupMemberTitle,
   newId,
   nextSort,
   nextVykladGroupTitle,
+  puzzleKindForChapter,
   puzzlesInChapter,
   siblingCopyTitle,
   sortChapters,
@@ -62,6 +67,7 @@ import {
   vykladGroupChapters,
   vykladGroupParentId,
   withMateSubchapters,
+  VYKLAD_MAX_MOVES,
   type Chapter,
   type Curriculum,
 } from "@/lib/curriculum";
@@ -78,6 +84,7 @@ import {
 } from "@/lib/markup";
 import { isUuid, puzzleKind, puzzleToSaveBody } from "@/lib/puzzles";
 import { parseSquares } from "@/lib/squares";
+import { AuthorQaStrip } from "@/components/author-qa-strip";
 import { PuzzleParamsEditor } from "@/components/puzzle-params-editor";
 import {
   parsePracticeTags,
@@ -88,11 +95,13 @@ import {
   isEmptyParams,
   mergeParams,
   parsePuzzleParams,
-  puzzleKindFromMode,
+  patchAuthorQa,
   sortPuzzlesByKey,
+  withInferredDistance,
+  type AuthorQaTrack,
   type PuzzleParams,
 } from "@/lib/puzzle-params";
-import { getReviewPrefs } from "@/lib/review-prefs";
+import { suggestWrongReplies } from "@/lib/wrong-suggest";
 import type { Puzzle, PuzzleKind, WrongReply } from "@/lib/types";
 
 function emptyForm() {
@@ -202,6 +211,7 @@ export function AdminPuzzleForm() {
   const [curriculum, setCurriculum] = useState<Curriculum>(DEMO_CURRICULUM);
   const [courseId, setCourseId] = useState(DEMO_CURRICULUM.courses[0]?.id ?? "");
   const [selectedChapterId, setSelectedChapterId] = useState<string | null>(null);
+  const [expandChapterId, setExpandChapterId] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [playTarget, setPlayTarget] = useState<"solution" | null>(null);
@@ -224,12 +234,15 @@ export function AdminPuzzleForm() {
   const [chapterDraftParams, setChapterDraftParams] = useState<PuzzleParams>(
     {},
   );
+  const [chapterParamsOpen, setChapterParamsOpen] = useState(false);
+  /** Až po mountu — SSR jinak mismatch u disabled (null vs true). */
+  const [hydrated, setHydrated] = useState(false);
   const historyRef = useRef<AdminSnapshot<ReturnType<typeof emptyForm>>[]>([]);
   const puzzlesRef = useRef(puzzles);
   const undoBusy = useRef(false);
   puzzlesRef.current = puzzles;
 
-  async function refresh() {
+  async function refresh(): Promise<Puzzle[]> {
     const [puzzleRes, curRes] = await Promise.all([
       fetch("/api/puzzles"),
       fetch("/api/curriculum"),
@@ -246,13 +259,19 @@ export function AdminPuzzleForm() {
       const data = (await puzzleRes.json()) as { puzzles: Puzzle[] };
       nextPuzzles = data.puzzles;
     }
+    const bound = bindPuzzlesToCurriculum(
+      nextPuzzles,
+      nextCurriculum.chapters,
+    );
     setCurriculum(nextCurriculum);
-    setPuzzles(bindPuzzlesToCurriculum(nextPuzzles, nextCurriculum.chapters));
+    setPuzzles(bound);
+    puzzlesRef.current = bound;
     setCourseId((current) =>
       nextCurriculum.courses.some((course) => course.id === current)
         ? current
         : nextCurriculum.courses[0]?.id ?? "",
     );
+    return bound;
   }
 
   function commitHistory(label: string) {
@@ -365,20 +384,32 @@ export function AdminPuzzleForm() {
   async function onDeletePuzzles(ids: string[]) {
     const unique = Array.from(new Set(ids.filter(isUuid)));
     if (!unique.length) return;
-    commitHistory(
-      unique.length === 1 ? "Smazat úlohu" : `Smazat ${unique.length} úloh`,
-    );
+    const label =
+      unique.length === 1 ? "Smazat úlohu" : `Smazat ${unique.length} úloh`;
+    commitHistory(label);
+    setStatus(`Mažu ${unique.length}…`);
     const res = await fetch("/api/puzzles", {
       method: "DELETE",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ ids: unique }),
     });
-    const data = (await res.json()) as { error?: string; deleted?: number };
+    let data: { error?: string; message?: string; deleted?: number } = {};
+    try {
+      data = (await res.json()) as typeof data;
+    } catch {
+      data = {};
+    }
     if (!res.ok) {
-      dropLastHistory(
-        unique.length === 1 ? "Smazat úlohu" : `Smazat ${unique.length} úloh`,
+      dropLastHistory(label);
+      // Částečné smazání — obnov seznam.
+      if (data.deleted) await refresh();
+      setStatus(
+        data.error ??
+          data.message ??
+          (res.status === 400
+            ? "Smazání selhalo (Bad Request) — zkus menší výběr."
+            : `Smazání selhalo (${res.status}).`),
       );
-      setStatus(data.error ?? "Smazání selhalo.");
       return;
     }
     const drop = new Set(unique);
@@ -514,15 +545,28 @@ export function AdminPuzzleForm() {
   }
 
   async function duplicatePuzzle(puzzle: Puzzle) {
-    const source = puzzleWithLiveForm(puzzle);
-    const leafId = source.chapterId ?? selectedChapterId;
-    const leaf = curriculum.chapters.find((item) => item.id === leafId);
-    if (!leaf) {
-      setStatus("Stejná úloha potřebuje kapitolu.");
+    const live = puzzleWithLiveForm(puzzle);
+    const leafId = live.chapterId ?? selectedChapterId;
+    const gate = canDuplicateVykladGroup(
+      curriculum.chapters,
+      puzzlesRef.current,
+      leafId,
+      live,
+    );
+    if (!gate.ok) {
+      setStatus(gate.reason);
       return;
     }
+    const source = gate.source;
+    const memberLeaf = gate.member;
+
+    if (!source.fen.trim() || !isValidFen(source.fen)) {
+      setStatus("Nejdřív ulož platnou pozici (FEN), pak Stejná úloha.");
+      return;
+    }
+
     // Group = sourozenci Pn pod nadkapitolou (ne S# pod P#).
-    const groupParentId = vykladGroupParentId(curriculum.chapters, leaf.id);
+    const groupParentId = vykladGroupParentId(curriculum.chapters, memberLeaf.id);
     if (!groupParentId) {
       setStatus("Stejná úloha potřebuje nadkapitolu (group).");
       return;
@@ -533,30 +577,6 @@ export function AdminPuzzleForm() {
     if (!groupParent) {
       setStatus("Stejná úloha potřebuje nadkapitolu (group).");
       return;
-    }
-
-    if (!source.fen.trim() || !isValidFen(source.fen)) {
-      setStatus("Nejdřív ulož platnou pozici (FEN), pak Stejná úloha.");
-      return;
-    }
-
-    // Člen groupy = kapitola přímo pod groupParent (P1/P2…).
-    // S# pod P# → ber P#. S# pod „P1 2“ → ber sourozený Pn (nebo povýš S#).
-    let memberLeaf = leaf;
-    if (/S\d+\s*$/i.test(leaf.title) && leaf.parentId) {
-      const parent = curriculum.chapters.find(
-        (item) => item.id === leaf.parentId,
-      );
-      if (parent && isVykladGroupMemberTitle(parent.title)) {
-        memberLeaf = parent;
-      } else if (parent && isBrokenVykladGroupTitle(parent.title)) {
-        const siblingPn = childChapters(
-          curriculum.chapters,
-          parent.id,
-          parent.courseId,
-        ).find((item) => isVykladGroupMemberTitle(item.title));
-        memberLeaf = siblingPn ?? leaf;
-      }
     }
 
     const siblings = vykladGroupChapters(curriculum.chapters, memberLeaf.id);
@@ -724,13 +744,19 @@ export function AdminPuzzleForm() {
   }
 
   useEffect(() => {
-    void refresh();
+    setHydrated(true);
   }, []);
 
   useEffect(() => {
+    if (!hydrated) return;
+    void refresh();
+  }, [hydrated]);
+
+  useEffect(() => {
+    if (!hydrated) return;
     setStepReset(readAdminStepReset());
     setWrongMode(readAdminWrongMode());
-  }, []);
+  }, [hydrated]);
 
   function applyWrongMode(id: AdminWrongMode) {
     setWrongMode(id);
@@ -756,10 +782,22 @@ export function AdminPuzzleForm() {
     (item) => item.id === (selectedChapterId ?? form.chapterId),
   );
   const isVyklad = isVykladEditorChapter(activeChapter, curriculum.chapters);
+  const showWrongPanel = isDrillChapter(activeChapter);
+  const squaresMode =
+    isSquaresChapter(activeChapter) ||
+    (!isVyklad && form.kind === "squares");
 
   useEffect(() => {
     setChapterDraftParams(parsePuzzleParams(activeChapter?.params ?? {}));
   }, [activeChapter?.id, activeChapter?.params]);
+
+  useEffect(() => {
+    if (!activeChapter) return;
+    const nextKind = puzzleKindForChapter(activeChapter);
+    setForm((current) =>
+      current.kind === nextKind ? current : { ...current, kind: nextKind },
+    );
+  }, [activeChapter?.id, activeChapter?.kind]);
 
   async function renumberChapter(chapterId: string) {
     const list = puzzlesInChapter(
@@ -785,36 +823,49 @@ export function AdminPuzzleForm() {
     setStatus(`Přečíslováno: ${sorted.length} úloh.`);
   }
 
-  async function saveChapterParams(applyAll: boolean) {
+  /** mode: defaults | merge (přidat) | replace (nahradit). Aplikuje i na podkapitoly. */
+  async function saveChapterParams(mode: "defaults" | "merge" | "replace") {
     if (!activeChapter) return;
     const params = parsePuzzleParams(chapterDraftParams);
-    commitHistory(applyAll ? "Parametry kapitoly → všechny" : "Parametry kapitoly");
+    const label =
+      mode === "merge"
+        ? "Parametry → přidat všem"
+        : mode === "replace"
+          ? "Parametry → nahradit všem"
+          : "Parametry kapitoly";
+    commitHistory(label);
     const chapters = curriculum.chapters.map((item) =>
       item.id === activeChapter.id
         ? {
             ...item,
-            ...(isEmptyParams(params)
-              ? { params: undefined }
-              : { params }),
+            ...(isEmptyParams(params) ? { params: undefined } : { params }),
           }
         : item,
     );
     await persistCurriculum({ ...curriculum, chapters }, "Parametry kapitoly");
-    if (!applyAll) {
-      setStatus("Default parametry kapitoly uloženy.");
+    if (mode === "defaults") {
+      setStatus("Default parametry kapitoly uloženy (nové úlohy).");
       return;
     }
     const list = puzzlesInChapter(
       puzzlesRef.current,
       activeChapter.id,
-      false,
+      true,
       chapters,
     );
-    const updated = list.map((item) => ({
-      ...item,
-      params: mergeParams(item.params, params),
-      tags: tagsFromParams(mergeParams(item.params, params)),
-    }));
+    if (list.length === 0) {
+      setStatus("V kapitole (ani podkapitolách) nejsou úlohy.");
+      return;
+    }
+    const updated = list.map((item) => {
+      const nextParams =
+        mode === "replace" ? params : mergeParams(item.params, params);
+      return {
+        ...item,
+        params: isEmptyParams(nextParams) ? undefined : nextParams,
+        tags: tagsFromParams(nextParams),
+      };
+    });
     const byId = new Map(updated.map((item) => [item.id, item]));
     const next = puzzlesRef.current.map((item) => byId.get(item.id) ?? item);
     setPuzzles(next);
@@ -832,7 +883,11 @@ export function AdminPuzzleForm() {
         tags: row.tags ?? [],
       }));
     }
-    setStatus(`Parametry přepsány u ${updated.length} úloh.`);
+    setStatus(
+      mode === "replace"
+        ? `Parametry nahrazeny u ${updated.length} úloh (včetně podkapitol).`
+        : `Parametry přidány u ${updated.length} úloh (včetně podkapitol).`,
+    );
   }
 
   useEffect(() => {
@@ -1017,7 +1072,7 @@ export function AdminPuzzleForm() {
     if (stepReset === "before") setMarkupPhase("before");
   }
 
-  /** Cvičení: hned draft do DB + strom. Výklad/source: seed form (kopie). */
+  /** Cvičení: draft do DB. Výklad + source: hned uložit kopii do (pod)kapitoly. */
   async function createNewPuzzle(
     chapterId: string,
     titleHint?: string,
@@ -1069,11 +1124,67 @@ export function AdminPuzzleForm() {
           };
         }
       }
+      const title = titleHint?.trim() || autoPuzzleTitle(chapterId);
+      const fen = (seed.fen || live?.fen || "").trim();
+
+      // Kopie pozice do nové (pod)kapitoly — hned do DB, ne jen form.
+      if (live && fen && isValidFen(fen)) {
+        const label = `Kopie pozice „${title}“`;
+        commitHistory(label);
+        const res = await fetch("/api/puzzles", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            ...puzzleToSaveBody({
+              ...live,
+              id: "",
+              title,
+              fen,
+              chapterId,
+              sort: 0,
+            }),
+            id: undefined,
+            title,
+            fen,
+            chapterId,
+            sort: 0,
+            allowEmptyMoves: true,
+          }),
+        });
+        const data = (await res.json()) as { error?: string; puzzle?: Puzzle };
+        if (!res.ok || !data.puzzle) {
+          dropLastHistory(label);
+          setStatus(data.error ?? "Kopii nešlo uložit.");
+          return;
+        }
+        const created: Puzzle = {
+          ...data.puzzle,
+          title: data.puzzle.title?.trim() || title,
+          fen: data.puzzle.fen?.trim() || fen,
+          chapterId,
+          sort: 0,
+          markup: data.puzzle.markup ?? live.markup,
+          moves: data.puzzle.moves?.length ? data.puzzle.moves : live.moves,
+          explanation: data.puzzle.explanation ?? live.explanation,
+          wrongReplies: data.puzzle.wrongReplies ?? live.wrongReplies,
+        };
+        setPuzzles((current) => {
+          const next = [...current, created];
+          puzzlesRef.current = next;
+          return next;
+        });
+        loadPuzzle(created);
+        setBoardEpoch((n) => n + 1);
+        setLinePly(0);
+        setStatus(`${label}. Ctrl+Z vrátí.`);
+        return;
+      }
+
       const next = {
         ...seed,
         id: "",
         chapterId,
-        title: titleHint?.trim() || autoPuzzleTitle(chapterId),
+        title,
         sort: 0,
       };
       setForm(next);
@@ -1095,7 +1206,7 @@ export function AdminPuzzleForm() {
       ),
     );
     const defaults = parsePuzzleParams(chapter?.params ?? {});
-    const kind = puzzleKindFromMode(defaults.mode);
+    const kind = puzzleKindForChapter(chapter);
     // Draft: prázdný FEN (ne EMPTY_SETUP — chess.js / stará validace to brala jako chybu).
     const label = "Nová úloha";
     commitHistory(label);
@@ -1147,11 +1258,66 @@ export function AdminPuzzleForm() {
     setForm({ ...form, squares: [...set].join(" ") });
   }
 
+  function setWrongQa(track: AuthorQaTrack) {
+    setForm((current) => {
+      const qa = patchAuthorQa(current.params.qa, "wrong", track);
+      const params: PuzzleParams = { ...current.params };
+      if (qa) params.qa = qa;
+      else delete params.qa;
+      return {
+        ...current,
+        params,
+        wrongReplies: track.none ? [] : current.wrongReplies,
+      };
+    });
+  }
+
+  function autoSuggestWrong() {
+    const solution = form.moves[0] || form.move;
+    if (!isValidFen(form.fen) || !solution) {
+      setStatus("Nejdřív FEN a řešení, pak Auto ŠT.");
+      return;
+    }
+    if (
+      form.wrongReplies.length > 0 &&
+      !window.confirm("Nahradit ŠT návrhem programu (passes = 0)?")
+    ) {
+      return;
+    }
+    const next = suggestWrongReplies(form.fen, solution, form.wrongReplies);
+    setForm((current) => {
+      const qa = patchAuthorQa(current.params.qa, "wrong", { passes: 0 });
+      const params: PuzzleParams = { ...current.params };
+      if (qa) params.qa = qa;
+      else delete params.qa;
+      return { ...current, params, wrongReplies: next };
+    });
+    setWrongOpen(true);
+    setWrongEdit(next.length ? 0 : null);
+    setStatus(
+      next.length
+        ? `Auto ŠT: ${next.length} tahů (program · 0). Doplň kódy.`
+        : "Auto ŠT: žádný jiný legální tah.",
+    );
+  }
+
   function addWrongReply() {
     const index = form.wrongReplies.length;
-    setForm({
-      ...form,
-      wrongReplies: [...form.wrongReplies, { answer: "", text: "" }],
+    setForm((current) => {
+      const params: PuzzleParams = { ...current.params };
+      if (params.qa?.wrong?.none) {
+        const qa = patchAuthorQa(params.qa, "wrong", {
+          passes: params.qa.wrong.passes,
+          done: params.qa.wrong.done,
+        });
+        if (qa) params.qa = qa;
+        else delete params.qa;
+      }
+      return {
+        ...current,
+        params,
+        wrongReplies: [...current.wrongReplies, { answer: "", text: "" }],
+      };
     });
     setWrongOpen(true);
     setWrongEdit(index);
@@ -1246,15 +1412,19 @@ export function AdminPuzzleForm() {
       id: isUuid(form.id) ? form.id : undefined,
       title,
       fen: form.fen.trim(),
-      kind: isVyklad ? "move" : form.kind,
+      kind: isVyklad
+        ? "move"
+        : puzzleKindForChapter(activeChapter) ?? form.kind,
       moves:
-        isVyklad || form.kind === "move"
+        isVyklad || !squaresMode
           ? isVyklad
-            ? form.moves.map(normalizeUci).filter(Boolean)
+            ? form.moves
+                .map(normalizeUci)
+                .filter(Boolean)
+                .slice(0, VYKLAD_MAX_MOVES)
             : [normalizeUci(form.move)].filter(Boolean)
           : [],
-      squares:
-        !isVyklad && form.kind === "squares" ? parseSquares(form.squares) : [],
+      squares: squaresMode && !isVyklad ? parseSquares(form.squares) : [],
       theme: form.theme.trim() || undefined,
       level: form.level.trim() || undefined,
       hint: form.hint.trim() || undefined,
@@ -1273,7 +1443,11 @@ export function AdminPuzzleForm() {
       ),
       markup: form.markup,
       tags: tagsFromParams(form.params),
-      params: form.params,
+      params: withInferredDistance(
+        form.params,
+        form.fen.trim(),
+        isVyklad ? form.moves[0] : form.move,
+      ),
       allowEmptyMoves: true,
       chapterId: form.chapterId,
       sort:
@@ -1293,12 +1467,23 @@ export function AdminPuzzleForm() {
       body: JSON.stringify(payload),
     });
 
-    const data = (await res.json()) as { error?: string; puzzle?: Puzzle };
+    let data: { error?: string; message?: string; puzzle?: Puzzle } = {};
+    try {
+      data = (await res.json()) as typeof data;
+    } catch {
+      data = {};
+    }
     setSaving(false);
 
     if (!res.ok) {
       dropLastHistory(saveLabel);
-      setStatus(data.error ?? "Uložení selhalo.");
+      setStatus(
+        data.error ??
+          data.message ??
+          (res.status === 400
+            ? "Uložení: Bad Request (neplatný FEN / tělo)."
+            : `Uložení selhalo (${res.status}).`),
+      );
       return;
     }
 
@@ -1448,12 +1633,59 @@ export function AdminPuzzleForm() {
                             {index}
                           </button>
                         ))}
+                        <span className="mx-1 h-5 w-px bg-border" aria-hidden />
+                        {Array.from({
+                          length: Math.min(
+                            form.moves.length,
+                            VYKLAD_MAX_MOVES,
+                          ) + 1,
+                        }).map((_, ply) => (
+                          <button
+                            key={`ply-${ply}`}
+                            type="button"
+                            className={`h-8 min-w-8 rounded-full px-2 font-mono text-sm ${
+                              linePly === ply
+                                ? "ring-1 ring-foreground/25 text-foreground"
+                                : "text-muted-foreground hover:bg-foreground/5"
+                            }`}
+                            title={
+                              ply === 0
+                                ? "Start"
+                                : `Po tahu ${ply}/${VYKLAD_MAX_MOVES}`
+                            }
+                            onClick={() => setLinePly(ply)}
+                          >
+                            {ply === 0 ? "·" : ply}
+                          </button>
+                        ))}
+                        <button
+                          type="button"
+                          className="h-8 rounded-full px-2 text-sm text-muted-foreground hover:bg-foreground/5"
+                          title="Smazat poslední tah"
+                          disabled={form.moves.length === 0}
+                          onClick={() => {
+                            setForm((current) => {
+                              const moves = current.moves.slice(0, -1);
+                              return {
+                                ...current,
+                                moves,
+                                move: moves[0] ?? "",
+                              };
+                            });
+                            setLinePly((current) => Math.max(0, current - 1));
+                          }}
+                        >
+                          −
+                        </button>
+                        <span className="text-[11px] text-muted-foreground">
+                          {form.moves.length}/{VYKLAD_MAX_MOVES}
+                        </span>
                       </>
                     ) : (
                     <button
                       type="button"
                       className="h-8 min-w-[4.5rem] rounded-md border border-border px-2 font-mono"
-                      disabled={!isValidFen(form.fen)}
+                      disabled={isValidFen(form.fen) ? undefined : true}
                       title={
                         form.kind === "squares"
                           ? "Upravit pole"
@@ -1493,32 +1725,15 @@ export function AdminPuzzleForm() {
                     >
                       UP
                     </RingLetter>
+                    {activeChapter ? (
+                      <span
+                        className="inline-flex h-6 min-w-6 items-center justify-center rounded-full px-1.5 text-[11px] font-semibold text-muted-foreground ring-1 ring-foreground/15"
+                        title={chapterKindLabel(activeChapter.kind)}
+                      >
+                        {chapterKindLabel(activeChapter.kind)}
+                      </span>
+                    ) : null}
                     {isVyklad ? null : (
-                    <>
-                    <span className="inline-flex">
-                      <RingLetter
-                        active={form.kind === "move"}
-                        title="Tahy"
-                        onClick={() => {
-                          setForm({ ...form, kind: "move" });
-                          setBoardOpen(false);
-                          if (stepReset === "before") setMarkupPhase("before");
-                        }}
-                      >
-                        T
-                      </RingLetter>
-                      <RingLetter
-                        active={form.kind === "squares"}
-                        title="Políčka"
-                        onClick={() => {
-                          setForm({ ...form, kind: "squares" });
-                          setPlayTarget(null);
-                          setMarkupPhase("before");
-                        }}
-                      >
-                        P
-                      </RingLetter>
-                    </span>
                     <span className="inline-flex">
                       <RingLetter
                         active={stepReset === "keep"}
@@ -1542,7 +1757,6 @@ export function AdminPuzzleForm() {
                         M
                       </RingLetter>
                     </span>
-                    </>
                     )}
                   </div>
   );
@@ -1585,16 +1799,28 @@ export function AdminPuzzleForm() {
                     </>
   );
 
+  if (!hydrated) {
+    return (
+      <div className="flex min-h-0 w-full flex-1 items-center justify-center text-sm text-muted-foreground">
+        Načítám…
+      </div>
+    );
+  }
+
   return (
     <div className="flex min-h-0 w-full flex-1 flex-col overflow-hidden">
       <details className="shrink-0 text-[14px] leading-none">
         <summary className="cursor-pointer select-none px-1 py-0.5 text-muted-foreground hover:text-foreground">
-          Import PGN
+          Import
         </summary>
       <div className="max-h-[40vh] overflow-y-auto px-1 pb-1">
       <PgnImportCard
-        onBeforeImport={() => commitHistory("Import PGN")}
+        onBeforeImport={() => commitHistory("Import PGN/FEN")}
         onImported={refresh}
+        onExpandChapter={(id) => {
+          setSelectedChapterId(id);
+          setExpandChapterId(id);
+        }}
         curriculum={curriculum}
         puzzles={puzzles}
         courseId={courseId}
@@ -1611,15 +1837,33 @@ export function AdminPuzzleForm() {
       </details>
       <div className="flex min-h-0 flex-1 overflow-hidden">
         <div className="flex min-h-0 w-[min(38%,28rem)] shrink-0 flex-col overflow-hidden border-r border-border px-1">
-            {activeChapter && chapterKindOf(activeChapter) === "cviceni" ? (
-              <details className="shrink-0 border-b border-border px-1 py-1 text-[12px]">
+            {activeChapter && isParamsChapter(activeChapter) ? (
+              <details
+                className="shrink-0 border-b border-border px-1 py-1 text-[12px]"
+                open={chapterParamsOpen}
+                onToggle={(event) =>
+                  setChapterParamsOpen(
+                    (event.target as HTMLDetailsElement).open,
+                  )
+                }
+              >
                 <summary className="cursor-pointer text-muted-foreground hover:text-foreground">
-                  Parametry kapitoly · řazení
+                  Parametry · {activeChapter.title}
+                  {(() => {
+                    const n = puzzlesInChapter(
+                      puzzles,
+                      activeChapter.id,
+                      true,
+                      curriculum.chapters,
+                    ).length;
+                    return n ? ` · ${n} úloh` : "";
+                  })()}
                 </summary>
-                <div className="mt-2 space-y-2 pb-2">
+                <div className="mt-2 max-h-[40vh] space-y-2 overflow-y-auto pb-2">
                   <PuzzleParamsEditor
                     value={chapterDraftParams}
                     showComputed={false}
+                    showQa={false}
                     onChange={setChapterDraftParams}
                   />
                   <div className="flex flex-wrap gap-1">
@@ -1628,18 +1872,35 @@ export function AdminPuzzleForm() {
                       size="sm"
                       variant="outline"
                       className="h-7 text-[11px]"
-                      onClick={() => void saveChapterParams(false)}
+                      onClick={() => void saveChapterParams("defaults")}
                     >
-                      Uložit default
+                      Default nových
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      className="h-7 text-[11px]"
+                      onClick={() => void saveChapterParams("merge")}
+                    >
+                      Přidat všem
                     </Button>
                     <Button
                       type="button"
                       size="sm"
                       variant="outline"
                       className="h-7 text-[11px]"
-                      onClick={() => void saveChapterParams(true)}
+                      onClick={() => {
+                        if (
+                          !window.confirm(
+                            "Nahradit parametry u všech úloh v kapitole (i podkapitolách)?",
+                          )
+                        ) {
+                          return;
+                        }
+                        void saveChapterParams("replace");
+                      }}
                     >
-                      Přepsat všechny
+                      Nahradit všem
                     </Button>
                     <Button
                       type="button"
@@ -1660,6 +1921,9 @@ export function AdminPuzzleForm() {
                     >
                       {[
                         ["sort", "číslo"],
+                        ["qa", "kontrola"],
+                        ["qaFlags", "flagy QA"],
+                        ["qaWrong", "ŠT QA"],
                         ["title", "motiv"],
                         ["piece", "figura"],
                         ["color", "barva"],
@@ -1696,6 +1960,12 @@ export function AdminPuzzleForm() {
               courseId={courseId}
               selectedPuzzleId={form.id || undefined}
               selectedChapterId={selectedChapterId}
+              expandChapterId={expandChapterId}
+              onChapterParams={(chapter) => {
+                setSelectedChapterId(chapter.id);
+                setChapterDraftParams(parsePuzzleParams(chapter.params ?? {}));
+                setChapterParamsOpen(true);
+              }}
               onSelectCourse={setCourseId}
               onSelectChapter={(id) => {
                 setSelectedChapterId(id);
@@ -1749,6 +2019,29 @@ export function AdminPuzzleForm() {
               onUndo={() => void undoLast()}
               canUndo={historySize > 0}
               undoLabel={undoLabel}
+              livePuzzle={
+                form.id
+                  ? puzzleWithLiveForm({
+                      id: form.id,
+                      title: form.title,
+                      fen: form.fen,
+                      moves: form.moves,
+                      kind: form.kind,
+                      squares: parseSquares(form.squares),
+                      chapterId: form.chapterId,
+                      sort: form.sort,
+                      theme: form.theme,
+                      level: form.level,
+                      hint: form.hint,
+                      source: form.source,
+                      explanation: form.explanation,
+                      videoUrl: form.videoUrl,
+                      wrongReplies: form.wrongReplies,
+                      markup: form.markup,
+                      tags: form.tags,
+                    })
+                  : null
+              }
             />
         </div>
         <form
@@ -1768,7 +2061,8 @@ export function AdminPuzzleForm() {
                     onWipe={wipeBoardExtras}
                     playMode={
                       isVyklad
-                        ? !setupOpen && markupTool !== "piece"
+                        ? // Šipka: levý = tah, pravý = šipka. Barva/kroužek: kreslení.
+                          !setupOpen && markupTool === "arrow"
                         : inWrong && !selectedReply?.answer && !hoverOther
                     }
                     moveLocked={false}
@@ -1776,10 +2070,16 @@ export function AdminPuzzleForm() {
                       if (isVyklad) {
                         setForm((current) => {
                           const keep = current.moves.slice(0, linePly);
-                          const moves = [...keep, normalizeUci(uci)];
+                          if (keep.length >= VYKLAD_MAX_MOVES) return current;
+                          const moves = [...keep, normalizeUci(uci)].slice(
+                            0,
+                            VYKLAD_MAX_MOVES,
+                          );
                           return { ...current, moves, move: moves[0] ?? "" };
                         });
-                        setLinePly((current) => current + 1);
+                        setLinePly((current) =>
+                          Math.min(current + 1, VYKLAD_MAX_MOVES),
+                        );
                         return;
                       }
                       if (wrongEdit === null) return;
@@ -1808,14 +2108,12 @@ export function AdminPuzzleForm() {
                       setForm((current) => ({ ...current, fen }));
                     }}
                     selectedSquares={
-                      form.kind === "squares" && !isVyklad
+                      squaresMode && !isVyklad
                         ? parseSquares(form.squares)
                         : []
                     }
                     onToggleSquare={
-                      form.kind === "squares" &&
-                      !isVyklad &&
-                      wrongEdit === null
+                      squaresMode && !isVyklad && wrongEdit === null
                         ? toggleSquare
                         : undefined
                     }
@@ -1955,9 +2253,9 @@ export function AdminPuzzleForm() {
                       </span>
                     ) : null}
                   </div>
-                  {wrongOpen && !isVyklad ? (
+                  {wrongOpen && showWrongPanel ? (
                   <div className="mt-2 flex min-h-0 flex-1 flex-col">
-                    <div className="flex shrink-0 items-center gap-1">
+                    <div className="flex shrink-0 flex-wrap items-center gap-1">
                     <button
                       type="button"
                       className="cursor-pointer select-none px-1 py-1 text-left text-muted-foreground hover:text-foreground"
@@ -1978,6 +2276,24 @@ export function AdminPuzzleForm() {
                     >
                       +ŠT
                     </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="h-9 px-3"
+                      title="Předpřipravit legální tahy kromě řešení (program · 0)"
+                      disabled={
+                        !isValidFen(form.fen) ||
+                        !(form.moves[0] || form.move)
+                      }
+                      onClick={autoSuggestWrong}
+                    >
+                      Auto
+                    </Button>
+                    <AuthorQaStrip
+                      track={form.params.qa?.wrong}
+                      hasContent={form.wrongReplies.length > 0}
+                      onChange={setWrongQa}
+                    />
                     <span className="ml-auto inline-flex">{wrongModeButtons}</span>
                     </div>
                     <div
@@ -2114,7 +2430,7 @@ export function AdminPuzzleForm() {
                     </div>
                   </div>
                   ) : null}
-                  <div className={wrongOpen && !isVyklad ? "max-h-[42%] shrink-0 overflow-y-auto border-t border-border pt-1 text-base" : "mt-2 flex min-h-0 flex-1 flex-col overflow-y-auto text-base"}>
+                  <div className={wrongOpen && showWrongPanel ? "max-h-[42%] shrink-0 overflow-y-auto border-t border-border pt-1 text-base" : "mt-2 flex min-h-0 flex-1 flex-col overflow-y-auto text-base"}>
                   <details
                     key={isVyklad ? "v-marks" : setupOpen ? "up-marks" : "c-marks"}
                     className="shrink-0 border-t border-border pt-1"
@@ -2208,11 +2524,12 @@ export function AdminPuzzleForm() {
                       return;
                     }
                     setForm((current) => ({ ...current, markup }));
+                  
                   }}
                 />
                     </div>
                   </details>
-                  {!wrongOpen && !isVyklad ? (
+                  {!wrongOpen && showWrongPanel ? (
                   <div className="shrink-0 border-t border-border pt-1">
                     <div className="flex shrink-0 items-center gap-1">
                     <button
@@ -2324,25 +2641,22 @@ export function AdminPuzzleForm() {
                   value={form.hint}
                   onChange={(e) => setForm({ ...form, hint: e.target.value })}
                 />
-                  {!isVyklad ? (
-                    <div className="col-span-2 space-y-2 rounded-md border border-border p-2">
-                      <div className="flex items-center justify-between gap-2">
-                      </div>
+                  {isParamsChapter(activeChapter) ? (
+                    <div className="col-span-2">
                       <PuzzleParamsEditor
                         value={form.params}
                         fen={form.fen}
+                        solutionUci={
+                          isVyklad ? form.moves[0] ?? "" : form.move
+                        }
                         wrongCount={form.wrongReplies.length}
                         markup={form.markup}
-                        difficultyFormula={getReviewPrefs().difficultyFormula}
+                        editFormula
                         onChange={(params) => {
-                          // Druhý klik odznačí — nenechat mode znovu doplnit z kind.
-                          const nextKind = params.mode
-                            ? puzzleKindFromMode(params.mode)
-                            : form.kind;
                           setForm({
                             ...form,
                             params,
-                            kind: nextKind,
+                            kind: puzzleKindForChapter(activeChapter),
                             tags: tagsFromParams(params),
                           });
                         }}

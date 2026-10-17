@@ -17,6 +17,7 @@ import {
   GripVertical,
   Pencil,
   Plus,
+  Tags,
   Trash2,
   Undo2,
 } from "lucide-react";
@@ -35,12 +36,17 @@ import {
   nextChapterKind,
   nextChapterSide,
   chapterKindOf,
+  chapterKindLabel,
+  chapterKindShort,
+  isLineChapter,
+  isParamsChapter,
   chapterSideOf,
   chapterSideLabel,
   chapterSideShort,
   siblingCopyTitle,
   childCopyTitle,
   titleEndsWithSNumber,
+  canDuplicateVykladGroup,
   type Chapter,
   type Curriculum,
 } from "@/lib/curriculum";
@@ -75,6 +81,12 @@ type CurriculumTreeProps = {
   canUndo: boolean;
   undoLabel: string | null;
   puzzleSortKey?: string;
+  /** Live form (FEN/tahy) pro gate další pozice ve skupině. */
+  livePuzzle?: Puzzle | null;
+  /** Po importu rozbal tuto kapitolu (+ předky). */
+  expandChapterId?: string | null;
+  /** Otevřít bulk parametry kapitoly (cvicení). */
+  onChapterParams?: (chapter: Chapter) => void;
 };
 
 export function CurriculumTree({
@@ -98,6 +110,9 @@ export function CurriculumTree({
   canUndo,
   undoLabel,
   puzzleSortKey = "sort",
+  livePuzzle = null,
+  expandChapterId = null,
+  onChapterParams,
 }: CurriculumTreeProps) {
   const [newCourse, setNewCourse] = useState("");
   const [newChapter, setNewChapter] = useState("");
@@ -131,6 +146,20 @@ export function CurriculumTree({
       return changed ? next : current;
     });
   }, [curriculum.chapters]);
+
+  useEffect(() => {
+    if (!expandChapterId) return;
+    setOpen((current) => {
+      const next = { ...current };
+      let id: string | null = expandChapterId;
+      while (id) {
+        next[id] = true;
+        id =
+          curriculum.chapters.find((item) => item.id === id)?.parentId ?? null;
+      }
+      return next;
+    });
+  }, [expandChapterId, curriculum.chapters]);
 
   const courses = sortCourses(curriculum.courses);
   const course = courses.find((item) => item.id === courseId) ?? courses[0];
@@ -212,7 +241,7 @@ export function CurriculumTree({
           slug,
           title,
           sort: nextSort(siblings),
-          kind: "cviceni",
+          kind: "jednotazka",
           side: "white",
         },
       ],
@@ -299,7 +328,8 @@ export function CurriculumTree({
     if (!course) return;
     const isVyklad = chapterKindOf(parent) === "vyklad";
     // Vždy auto název (prompt u C často selže / zruší → „nejde“).
-    // Výklad: ještě kopie pozice. Cvičení: jen strom, hned přejmenovat.
+    // Kopie pozice jen když sourcePuzzle explicitně (ne auto z parentu).
+    // Skupina 0→1→2 = Plus → onDuplicatePuzzle, ne FolderPlus.
     const title = childCopyTitle(parent.title, usedTitles(parent.id));
     const kids = childChapters(curriculum.chapters, parent.id, course.id);
     const extra: Chapter = {
@@ -319,10 +349,7 @@ export function CurriculumTree({
       setRenameValue(title);
       return;
     }
-    const source =
-      sourcePuzzle ??
-      puzzlesInChapter(puzzles, parent.id, false, curriculum.chapters)[0];
-    onNewPuzzle(extra.id, extra.title, source);
+    onNewPuzzle(extra.id, extra.title, sourcePuzzle);
   }
 
   function renameChapter(chapter: Chapter) {
@@ -710,7 +737,7 @@ export function CurriculumTree({
           type="button"
           variant="outline"
           className="h-7 px-1.5 text-[14px]"
-          disabled={!canUndo}
+          disabled={canUndo ? undefined : true}
           title={undoLabel ? `Zpět: ${undoLabel} (Ctrl+Z)` : "Nic k vrácení"}
           onClick={onUndo}
         >
@@ -822,6 +849,8 @@ export function CurriculumTree({
             }}
             depth={0}
             puzzleSortKey={puzzleSortKey}
+            livePuzzle={livePuzzle}
+            onChapterParams={onChapterParams}
           />
         ))}
       </div>
@@ -865,6 +894,8 @@ function ChapterNode({
   onDeletePuzzle,
   depth,
   puzzleSortKey = "sort",
+  livePuzzle = null,
+  onChapterParams,
 }: {
   chapter: Chapter;
   chapters: Chapter[];
@@ -905,6 +936,8 @@ function ChapterNode({
   onDeletePuzzle: (puzzle: Puzzle) => void;
   depth: number;
   puzzleSortKey?: string;
+  livePuzzle?: Puzzle | null;
+  onChapterParams?: (chapter: Chapter) => void;
 }) {
   const kids = childChapters(chapters, chapter.id);
   const items = sortPuzzlesByKey(
@@ -918,22 +951,18 @@ function ChapterNode({
   const branchAll = branch.length > 0 && branchSelected === branch.length;
   const branchSome = branchSelected > 0 && !branchAll;
   const expanded = open[chapter.id] === true;
-  const isVyklad = chapterKindOf(chapter) === "vyklad";
+  const isVyklad = isLineChapter(chapter);
+  const kind = chapterKindOf(chapter);
   // Výklad: úloha = kapitola. Puzzle řádky ve stromu schovat (vypadaly jako subkapitoly).
-  const treeItems = isVyklad ? [] : items;
+  // Výklad list: 1 úloha = kapitola (řádky schovat). Vic úloh = ukaž je (import).
+  const hidePuzzleRows = isVyklad && items.length <= 1;
+  const treeItems = hidePuzzleRows ? [] : items;
   const hasTreeChildren = kids.length > 0 || treeItems.length > 0;
-  const badgeCount = isVyklad ? kids.length : kids.length + items.length;
+  const badgeCount = kids.length + items.length;
   const leafPuzzle = isVyklad ? items[0] : undefined;
   const chapterActive =
     selectedChapterId === chapter.id ||
     Boolean(leafPuzzle && leafPuzzle.id === selectedPuzzleId);
-  const duplicateFromChapter = () => {
-    const source =
-      leafPuzzle ??
-      puzzlesInChapter(puzzles, chapter.id, true, chapters)[0];
-    if (source) onDuplicatePuzzle(source);
-    else onAddSibling(chapter);
-  };
   return (
     <div
       className="mb-0"
@@ -1024,43 +1053,62 @@ function ChapterNode({
             title="Podkapitola · nesting o úroveň níž"
             onClick={(event) => {
               event.stopPropagation();
-              onAddChild(chapter, leafPuzzle);
+              onAddChild(chapter);
             }}
           >
             <FolderPlus className="size-3" />
           </IconBtn>
           {!isVyklad ? (
-            <IconBtn
-              title="Nová úloha"
-              onClick={(event) => {
-                event.stopPropagation();
-                setOpen((current) => {
-                  const next = { ...current, [chapter.id]: true };
-                  let id: string | null = chapter.parentId;
-                  while (id) {
-                    next[id] = true;
-                    id =
-                      chapters.find((item) => item.id === id)?.parentId ??
-                      null;
+            <>
+              {isParamsChapter(chapter) ? (
+                <IconBtn
+                  title="Parametry kapitoly · bulk"
+                  className={
+                    chapter.params && Object.keys(chapter.params).length
+                      ? "text-foreground"
+                      : undefined
                   }
-                  return next;
-                });
-                onNewPuzzle(chapter.id);
-              }}
-            >
-              <Plus className="size-3" />
-            </IconBtn>
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    onSelectChapter(chapter.id);
+                    onChapterParams?.(chapter);
+                  }}
+                >
+                  <Tags className="size-3" />
+                </IconBtn>
+              ) : null}
+              <IconBtn
+                title="Nová úloha"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  setOpen((current) => {
+                    const next = { ...current, [chapter.id]: true };
+                    let id: string | null = chapter.parentId;
+                    while (id) {
+                      next[id] = true;
+                      id =
+                        chapters.find((item) => item.id === id)?.parentId ??
+                        null;
+                    }
+                    return next;
+                  });
+                  onNewPuzzle(chapter.id);
+                }}
+              >
+                <Plus className="size-3" />
+              </IconBtn>
+            </>
           ) : null}
           <button
             type="button"
-            title={isVyklad ? "Výklad" : "Cvičení"}
-            className="w-5 shrink-0 rounded text-center text-[12px] font-semibold uppercase text-muted-foreground hover:bg-foreground/10 hover:text-foreground"
+            title={`${chapterKindLabel(kind)} · klik = další typ (C/V/F/M)`}
+            className="inline-flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full px-0.5 text-center text-[12px] font-semibold uppercase text-muted-foreground hover:bg-foreground/10 hover:text-foreground"
             onClick={(event) => {
               event.stopPropagation();
               onCycleKind(chapter);
             }}
           >
-            {isVyklad ? "V" : "C"}
+            {chapterKindShort(kind)}
           </button>
           <button
             type="button"
@@ -1096,16 +1144,38 @@ function ChapterNode({
           >
             <Pencil className="size-3" />
           </IconBtn>
-          {isVyklad ? (
-            <IconBtn
-              title="Stejná pozice · stejná úroveň · index +1"
-              onClick={(event) => {
-                event.stopPropagation();
-                duplicateFromChapter();
-              }}
-            >
-              <Plus className="size-3" />
-            </IconBtn>
+          {isVyklad && leafPuzzle ? (
+            (() => {
+              const live =
+                livePuzzle &&
+                (livePuzzle.id === leafPuzzle.id ||
+                  livePuzzle.chapterId === chapter.id)
+                  ? livePuzzle
+                  : null;
+              const gate = canDuplicateVykladGroup(
+                chapters,
+                puzzles,
+                chapter.id,
+                live,
+              );
+              return (
+                <IconBtn
+                  title={
+                    gate.ok
+                      ? "Stejná pozice · další ve skupině (index +1)"
+                      : gate.reason
+                  }
+                  disabled={!gate.ok}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    if (!gate.ok) return;
+                    onDuplicatePuzzle(leafPuzzle);
+                  }}
+                >
+                  <Plus className="size-3" />
+                </IconBtn>
+              );
+            })()
           ) : null}
           <IconBtn
             title="Smazat"
@@ -1173,6 +1243,8 @@ function ChapterNode({
               onDeletePuzzle={onDeletePuzzle}
               depth={depth + 1}
               puzzleSortKey={puzzleSortKey}
+              livePuzzle={livePuzzle}
+              onChapterParams={onChapterParams}
             />
               ) : (
             <PuzzleRow
@@ -1424,18 +1496,22 @@ function IconBtn({
   onClick,
   className,
   children,
+  disabled,
 }: {
   title: string;
   onClick: (event: MouseEvent<HTMLButtonElement>) => void;
   className?: string;
   children: ReactNode;
+  disabled?: boolean;
 }) {
   return (
     <button
       type="button"
       title={title}
+      disabled={disabled ? true : undefined}
       className={cn(
         "rounded p-0.5 text-muted-foreground hover:bg-foreground/10 hover:text-foreground",
+        disabled && "cursor-not-allowed opacity-35 hover:bg-transparent hover:text-muted-foreground",
         className,
       )}
       onClick={onClick}

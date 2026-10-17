@@ -11,29 +11,35 @@ import {
 import { Upload } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import {
   childChapters,
+  puzzlesInChapter,
   sortChapters,
   sortCourses,
   type Curriculum,
 } from "@/lib/curriculum";
+import { looksLikeFenList, parseFenText } from "@/lib/fen-import";
 import { decodePgnBytes, parsePgnText, type PgnParseResult } from "@/lib/pgn-import";
+import { withInferredDistance } from "@/lib/puzzle-params";
 import type { Puzzle } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 type PgnImportCardProps = {
   onBeforeImport?: () => void;
-  onImported: () => Promise<void> | void;
+  /** Vrátí aktuální seznam úloh po refreshi. */
+  onImported: () => Promise<Puzzle[]> | Puzzle[] | void;
   curriculum: Curriculum;
   puzzles: Puzzle[];
   courseId: string;
   chapterId?: string | null;
   onSelectCourse: (id: string) => void;
   onSelectChapter: (id: string | null) => void;
+  /** Rozbal kapitolu ve stromu po importu. */
+  onExpandChapter?: (chapterId: string) => void;
 };
 
 export function PgnImportCard({
@@ -45,6 +51,7 @@ export function PgnImportCard({
   chapterId,
   onSelectCourse,
   onSelectChapter,
+  onExpandChapter,
 }: PgnImportCardProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [dragOver, setDragOver] = useState(false);
@@ -57,16 +64,23 @@ export function PgnImportCard({
   const [titleBase, setTitleBase] = useState("");
   const [numberTitles, setNumberTitles] = useState(true);
   const [importDistance, setImportDistance] = useState<"" | "V" | "D">("");
+  const [sourceKind, setSourceKind] = useState<"pgn" | "fen" | null>(null);
 
   const applyText = useCallback((text: string, names: string[]) => {
-    const result = parsePgnText(text);
+    const fenMode =
+      names.some((name) => /\.(fen|epd)$/i.test(name)) || looksLikeFenList(text);
+    const result = fenMode ? parseFenText(text) : parsePgnText(text);
+    setSourceKind(fenMode ? "fen" : "pgn");
     setParsed(result);
     setFiles(names);
+    const label = fenMode ? "pozic" : "partií";
     setStatus(
       result.total === 0
-        ? "No games in that PGN."
-        : `Found ${result.puzzles.length} puzzle${result.puzzles.length === 1 ? "" : "s"}${
-            result.skipped.length ? `, skipped ${result.skipped.length}` : ""
+        ? fenMode
+          ? "V textu žádný FEN."
+          : "V PGN žádné partie."
+        : `Nalezeno ${result.puzzles.length} ${label}${
+            result.skipped.length ? `, přeskočeno ${result.skipped.length}` : ""
           }.`,
     );
   }, []);
@@ -78,25 +92,25 @@ export function PgnImportCard({
         setStatus("ChessBase databáze ne. V ChessBase: Soubor → Exportovat → PGN.");
         return;
       }
-      const pgnFiles = files.filter(
+      const importFiles = files.filter(
         (file) =>
-          /\.(pgn|txt)$/i.test(file.name) ||
+          /\.(pgn|txt|fen|epd)$/i.test(file.name) ||
           !file.type ||
           file.type === "application/octet-stream" ||
           file.type.includes("pgn") ||
           file.type.includes("chess") ||
           file.type.startsWith("text/"),
       );
-      if (pgnFiles.length === 0) {
-        setStatus("Dej sem .pgn z ChessBase exportu.");
+      if (importFiles.length === 0) {
+        setStatus("Dej sem .pgn / .fen / .epd / .txt.");
         return;
       }
       const chunks = await Promise.all(
-        pgnFiles.map(async (file) =>
+        importFiles.map(async (file) =>
           decodePgnBytes(new Uint8Array(await file.arrayBuffer())),
         ),
       );
-      applyText(chunks.join("\n\n"), pgnFiles.map((file) => file.name));
+      applyText(chunks.join("\n\n"), importFiles.map((file) => file.name));
     },
     [applyText],
   );
@@ -123,6 +137,10 @@ export function PgnImportCard({
 
   async function onImport() {
     if (!parsed?.puzzles.length) return;
+    if (!chapterId) {
+      setStatus("Nejdřív vyber kapitolu (ne Nezařazené).");
+      return;
+    }
     onBeforeImport?.();
     setImporting(true);
     setStatus(null);
@@ -140,14 +158,18 @@ export function PgnImportCard({
             numberTitles,
             index,
           ).slice(0, 48);
-          const params = {
-            ...chapterParams,
-            ...(importDistance ? { distance: importDistance } : {}),
-          };
+          const params = withInferredDistance(
+            {
+              ...chapterParams,
+              ...(importDistance ? { distance: importDistance } : {}),
+            },
+            puzzle.fen,
+            puzzle.moves[0],
+          );
           return {
             ...puzzle,
             title,
-            chapterId: chapterId || undefined,
+            chapterId,
             sort: nextSortInChapter(puzzles, chapterId) + index,
             params,
             tags:
@@ -168,29 +190,45 @@ export function PgnImportCard({
     setImporting(false);
 
     if (!res.ok) {
-      setStatus(data.error ?? "Import failed.");
+      setStatus(
+        data.error
+          ? `${data.error}${
+              data.imported ? ` (uloženo ${data.imported})` : ""
+            }`
+          : "Import selhal.",
+      );
+      if (data.imported) await onImported();
       return;
     }
 
+    const nextPuzzles = (await onImported()) ?? [];
+    onExpandChapter?.(chapterId);
+    const inChapter = puzzlesInChapter(
+      nextPuzzles,
+      chapterId,
+      false,
+      curriculum.chapters,
+    ).length;
     const bits = [`Importováno ${data.imported ?? 0}`];
-    if (data.moved) bits.push(`${data.moved} přesunuto do kapitoly`);
-    if (data.duplicates) bits.push(`${data.duplicates} už tam bylo`);
+    if (data.moved) bits.push(`${data.moved} přesunuto`);
+    if (data.duplicates) bits.push(`${data.duplicates} duplicit`);
     if (data.invalid?.length) bits.push(`${data.invalid.length} neplatných`);
+    bits.push(`v kapitole „${chapter?.title ?? "?"}“ teď ${inChapter} úloh`);
+    if ((data.imported ?? 0) > 0 && inChapter === 0) {
+      bits.push("POZOR: úlohy bez vazby na kapitolu — zkus znovu / F5");
+    }
     setStatus(`${bits.join(". ")}.`);
     setParsed(null);
     setFiles([]);
     setPaste("");
-    await onImported();
+    setSourceKind(null);
   }
 
   return (
     <Card className="bg-card">
       <CardHeader className="flex flex-row items-start justify-between gap-4 p-4">
         <div>
-          <CardTitle>Mass import</CardTitle>
-          <CardDescription>
-            Drop ChessBase / Chessable PGN files. Each game becomes one mate-in-1.
-          </CardDescription>
+          <CardTitle>Import PGN / FEN</CardTitle>
         </div>
         <Button
           type="button"
@@ -198,7 +236,7 @@ export function PgnImportCard({
           size="sm"
           onClick={() => setPasteMode((open) => !open)}
         >
-          {pasteMode ? "Switch to files" : "Switch to copy & paste"}
+          {pasteMode ? "Soubory" : "Vložit text"}
         </Button>
       </CardHeader>
       <CardContent className="space-y-3 p-4 pt-0">
@@ -267,7 +305,7 @@ export function PgnImportCard({
         <input
           ref={inputRef}
           type="file"
-          accept=".pgn,.txt,application/x-chess-pgn"
+          accept=".pgn,.txt,.fen,.epd,application/x-chess-pgn,text/plain"
           multiple
           className="hidden"
           onChange={onFileChange}
@@ -278,16 +316,27 @@ export function PgnImportCard({
             <Textarea
               value={paste}
               onChange={(event) => setPaste(event.target.value)}
-              placeholder="Paste one or more PGN games…"
+              placeholder={
+                "PGN partie…\nnebo FEN po řádcích:\n6k1/5ppp/8/8/8/8/5PPP/4R1K1 w - - 0 1\nMat věží|6k1/5ppp/8/8/8/8/5PPP/4R1K1 w - - 0 1|e1e8"
+              }
               className="min-h-40 font-mono text-xs"
             />
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => applyText(paste, ["pasted.pgn"])}
-            >
-              Parse PGN
-            </Button>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => applyText(paste, ["pasted.pgn"])}
+              >
+                Parsovat PGN
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => applyText(paste, ["pasted.fen"])}
+              >
+                Parsovat FEN
+              </Button>
+            </div>
           </div>
         ) : (
           <div
@@ -307,7 +356,7 @@ export function PgnImportCard({
           >
             <Upload className="mb-2 size-6 text-muted-foreground" strokeWidth={1.5} />
             <p className="text-sm text-muted-foreground">
-              Drop .pgn files here, or click to browse.
+              Drop .pgn / .fen / .epd, nebo klikni.
             </p>
           </div>
         )}
@@ -323,11 +372,17 @@ export function PgnImportCard({
               disabled={importing || parsed.puzzles.length === 0}
               onClick={() => void onImport()}
             >
-              {importing ? "Importing…" : `Import ${parsed.puzzles.length}`}
+              {importing
+                ? "Importuji…"
+                : `Import ${parsed.puzzles.length}${
+                    sourceKind === "fen" ? " FEN" : sourceKind === "pgn" ? " PGN" : ""
+                  }`}
             </Button>
             <p className="text-sm text-muted-foreground">
-              {parsed.puzzles.length} ready
-              {parsed.skipped.length ? ` · ${parsed.skipped.length} skipped` : ""}
+              {parsed.puzzles.length} připraveno
+              {parsed.skipped.length
+                ? ` · ${parsed.skipped.length} přeskočeno`
+                : ""}
             </p>
           </div>
         ) : null}
@@ -336,7 +391,7 @@ export function PgnImportCard({
           <ul className="text-xs text-amber-300/80">
             {parsed.skipped.slice(0, 8).map((skip) => (
               <li key={`${skip.index}-${skip.reason}`}>
-                Game {skip.index + 1}
+                Řádek {skip.index + 1}
                 {skip.event ? ` (${skip.event})` : ""}: {skip.reason}
               </li>
             ))}
@@ -433,7 +488,7 @@ function ImportTarget({
           id="import-sub"
           className="h-9 w-full rounded-md border border-border bg-background px-3 text-sm"
           value={subId}
-          disabled={!rootId || subs.length === 0}
+          disabled={!rootId || subs.length === 0 ? true : undefined}
           onChange={(event) =>
             onSelectChapter(event.target.value || rootId || null)
           }

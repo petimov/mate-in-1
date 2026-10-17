@@ -146,8 +146,8 @@ export function PositionSetupBoard({
   const showSetupChrome = (positionEdit || tool === "piece") && !playMode;
   const pieceSetup = showSetupChrome && tool === "piece";
   const canMarkup = Boolean(onMarkupChange && !spare);
-  // Šipky i při UP / figurkách — pravý tah. Spare jen blokuje bodové značky.
-  const canDrawArrows = Boolean(onMarkupChange) && !playMode;
+  // Šipky i v playMode / UP — pravý tah. Spare jen blokuje bodové značky.
+  const canDrawArrows = Boolean(onMarkupChange);
   const canPlay = playMode && !moveLocked && Boolean(onPlayMove);
 
   useEffect(() => {

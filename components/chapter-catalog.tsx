@@ -12,6 +12,7 @@ import { useSrsMap } from "@/components/srs-stats";
 import { Button } from "@/components/ui/button";
 import {
   chapterHref,
+  chapterKindLabel,
   chapterKindOf,
   chapterParam,
   chapterPuzzleCount,
@@ -86,16 +87,16 @@ function chaosLearnHref(chapterId?: string | null) {
   return `/ulohy/trenink?${params.toString()}`;
 }
 
-function chapterHasCviceni(
+function chapterHasJednotazka(
   chapter: Chapter,
   chapters: Chapter[],
   puzzles: Puzzle[],
 ): boolean {
-  if (chapterKindOf(chapter) === "cviceni") {
+  if (chapterKindOf(chapter) === "jednotazka") {
     return puzzlesInChapter(puzzles, chapter.id, true, chapters).length > 0;
   }
   return childChapters(chapters, chapter.id).some((child) =>
-    chapterHasCviceni(child, chapters, puzzles),
+    chapterHasJednotazka(child, chapters, puzzles),
   );
 }
 
@@ -164,7 +165,7 @@ export function ChapterCatalog({
     ? childChapters(curriculum.chapters, parent?.id ?? null, course.id).filter(
         (chapter) =>
           !chaos ||
-          chapterHasCviceni(chapter, curriculum.chapters, puzzles),
+          chapterHasJednotazka(chapter, curriculum.chapters, puzzles),
       )
     : [];
 
@@ -413,7 +414,7 @@ function ChapterCard({
         {chapter.title}
       </h2>
       <p className="mt-1 text-[11px] uppercase tracking-wide text-muted-foreground">
-        {chapterKindOf(chapter) === "cviceni" ? "Cvičení" : "Výklad"}
+        {chapterKindLabel(chapter.kind)}
       </p>
       {subs.length > 0 ? (
         <p className="mt-1 text-[11px] text-muted-foreground">

@@ -144,7 +144,7 @@ export function buildMotivaceSections(
   function walk(node: Chapter) {
     const kids = childChapters(chapters, node.id, courseId);
     const leafPuzzles = puzzleCountsForMotivace(puzzles, node.id, chapters);
-    const isCviceni = chapterKindOf(node) === "cviceni";
+    const isJednotazka = chapterKindOf(node) === "jednotazka";
     const piece = detectPieceFromChain(node, chapters) ?? "pawn";
 
     const hasTagged = leafPuzzles.some(
@@ -154,7 +154,7 @@ export function buildMotivaceSections(
     if (
       leafPuzzles.length > 0 &&
       kids.length === 0 &&
-      (isCviceni || hasTagged)
+      (isJednotazka || hasTagged)
     ) {
       const side = node.side ?? chapterSideOf(chapters, node.id);
       const theme = themeRootOf(node, chapters);

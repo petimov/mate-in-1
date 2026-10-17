@@ -42,7 +42,8 @@ export function filterLessonPuzzles(
   const kinds = new Map(chapters.map((chapter) => [chapter.id, chapter]));
   return puzzles.filter((puzzle) => {
     if (!puzzle.chapterId) return false;
-    return chapterKindOf(kinds.get(puzzle.chapterId)) === "cviceni";
+    const kind = chapterKindOf(kinds.get(puzzle.chapterId));
+    return kind !== "vyklad";
   });
 }
 

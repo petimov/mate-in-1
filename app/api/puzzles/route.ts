@@ -97,13 +97,16 @@ export async function DELETE(request: Request) {
     return NextResponse.json({ error: "Nic ke smazání." }, { status: 400 });
   }
 
-  const { error } = await deletePuzzleRows(supabase, ids);
+  const { error, deleted } = await deletePuzzleRows(supabase, ids);
   if (error) {
     return NextResponse.json(
-      { error: error.message ?? "Úlohy nešlo smazat." },
+      {
+        error: error.message ?? "Úlohy nešlo smazat.",
+        deleted: deleted ?? 0,
+      },
       { status: 500 },
     );
   }
 
-  return NextResponse.json({ deleted: ids.length });
+  return NextResponse.json({ deleted: deleted ?? ids.length });
 }

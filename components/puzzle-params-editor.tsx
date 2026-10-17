@@ -1,7 +1,11 @@
 "use client";
 
+import { useEffect, useState, useSyncExternalStore } from "react";
+
+import { AuthorQaStrip } from "@/components/author-qa-strip";
 import {
   PARAM_COLORS,
+  PARAM_DISTANCE_LABEL,
   PARAM_DISTANCES,
   PARAM_FLAG_KEYS,
   PARAM_FLAG_LABEL,
@@ -13,26 +17,41 @@ import {
   PARAM_PIECES,
   PARAM_ROLE_LABEL,
   PARAM_ROLES,
+  DEFAULT_DIFFICULTY_FORMULA,
   countArrowPieces,
   countPiecesOnFen,
   difficultyVars,
   evalDifficultyFormula,
+  inferDistance,
+  patchAuthorQa,
   type ParamFlagKey,
   type PuzzleParams,
 } from "@/lib/puzzle-params";
+import {
+  getReviewPrefs,
+  setReviewPrefs,
+  subscribeReviewPrefs,
+} from "@/lib/review-prefs";
 import { cn } from "@/lib/utils";
 
 type Props = {
   value: PuzzleParams;
   onChange: (next: PuzzleParams) => void;
   fen?: string;
+  /** První tah řešení (UCI) — pro auto V/D. */
+  solutionUci?: string;
   wrongCount?: number;
   markup?: { after?: { arrows?: unknown } } | null;
+  /** Pokud není, bere se z prefs (editovatelný v adminu). */
   difficultyFormula?: string;
   className?: string;
   compact?: boolean;
   showComputed?: boolean;
   showLateFlags?: boolean;
+  /** Umožnit editaci vzorce T (admin). */
+  editFormula?: boolean;
+  /** QA stopa Flagy (nic · n · ✓). Vypnout u defaultů kapitoly. */
+  showQa?: boolean;
 };
 
 function ParamRing({
@@ -102,6 +121,7 @@ export function PuzzleParamsEditor({
   value,
   onChange,
   fen = "",
+  solutionUci = "",
   wrongCount = 0,
   markup,
   difficultyFormula,
@@ -109,7 +129,27 @@ export function PuzzleParamsEditor({
   compact = false,
   showComputed = true,
   showLateFlags = true,
+  editFormula = false,
+  showQa = true,
 }: Props) {
+  const prefsFormula = useSyncExternalStore(
+    subscribeReviewPrefs,
+    () => getReviewPrefs().difficultyFormula,
+    () => DEFAULT_DIFFICULTY_FORMULA,
+  );
+  const formula = difficultyFormula?.trim() || prefsFormula;
+  const [draftFormula, setDraftFormula] = useState(formula);
+  const [formulaOpen, setFormulaOpen] = useState(false);
+  useEffect(() => {
+    setDraftFormula(formula);
+  }, [formula]);
+  const computedDistance = inferDistance(fen, solutionUci);
+  useEffect(() => {
+    if (!computedDistance || value.distance) return;
+    onChange({ ...value, distance: computedDistance });
+    // Jen doplnění prázdného V/D.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [computedDistance, fen, solutionUci, value.distance]);
   const arrowPieces = countArrowPieces(markup);
   const q = fen ? countPiecesOnFen(fen) : 0;
   const vars = difficultyVars({
@@ -118,10 +158,9 @@ export function PuzzleParamsEditor({
     wrongCount,
     flags: value.flags,
   });
-  const difficulty = evalDifficultyFormula(
-    difficultyFormula ?? "",
-    vars,
-  );
+  const liveFormula =
+    editFormula && formulaOpen ? draftFormula : formula;
+  const difficulty = evalDifficultyFormula(liveFormula, vars);
 
   function setField<K extends keyof PuzzleParams>(
     key: K,
@@ -140,8 +179,18 @@ export function PuzzleParamsEditor({
     const next: PuzzleParams = { ...value };
     if (Object.keys(flags).length) next.flags = flags;
     else delete next.flags;
+    if (Object.keys(flags).length && next.qa?.flags?.none) {
+      next.qa = patchAuthorQa(next.qa, "flags", {
+        passes: next.qa.flags.passes,
+        done: next.qa.flags.done,
+      });
+    }
     onChange(next);
   }
+
+  const hasFlags = Boolean(
+    value.flags && Object.values(value.flags).some(Boolean),
+  );
 
   const earlyFlags = PARAM_FLAG_KEYS.filter((k) =>
     ["U", "B", "P", "Z"].includes(k),
@@ -189,7 +238,8 @@ export function PuzzleParamsEditor({
       <ChipGroup
         label="Vzdál."
         options={PARAM_DISTANCES}
-        value={value.distance}
+        value={value.distance ?? computedDistance}
+        labels={PARAM_DISTANCE_LABEL}
         onPick={(distance) => setField("distance", distance)}
       />
 
@@ -215,27 +265,99 @@ export function PuzzleParamsEditor({
               />
             ))
           : null}
+        {showQa ? (
+          <AuthorQaStrip
+            className="ml-1"
+            track={value.qa?.flags}
+            hasContent={hasFlags}
+            onChange={(track) => {
+              const next: PuzzleParams = { ...value };
+              const qa = patchAuthorQa(value.qa, "flags", track);
+              if (qa) next.qa = qa;
+              else delete next.qa;
+              if (track.none) delete next.flags;
+              onChange(next);
+            }}
+          />
+        ) : null}
       </div>
 
       {showComputed ? (
-        <div
-          className={cn(
-            "grid gap-1 text-[11px] text-muted-foreground",
-            compact ? "grid-cols-1 sm:grid-cols-2" : "grid-cols-2",
-          )}
-        >
-          <span title="Q · počet figur na šachovnici">
-            Figur <strong className="text-foreground">{q}</strong>
-          </span>
-          <span title="R · figury ze šipek po tahu">
-            Ze šipek <strong className="text-foreground">{arrowPieces}</strong>
-          </span>
-          <span title="S · počet špatných tahů">
-            Špatných <strong className="text-foreground">{wrongCount}</strong>
-          </span>
-          <span title="T · koeficient obtížnosti">
-            Obtížnost <strong className="text-foreground">{difficulty}</strong>
-          </span>
+        <div className="space-y-1.5">
+          <div
+            className={cn(
+              "grid gap-1 text-[11px] text-muted-foreground",
+              compact ? "grid-cols-1 sm:grid-cols-2" : "grid-cols-2",
+            )}
+          >
+            <span title="Q · počet figur na šachovnici">
+              Figur <strong className="text-foreground">{q}</strong>
+            </span>
+            <span title="R · figury ze šipek po tahu">
+              Ze šipek <strong className="text-foreground">{arrowPieces}</strong>
+            </span>
+            <span title="S · počet špatných tahů">
+              Špatných <strong className="text-foreground">{wrongCount}</strong>
+            </span>
+            <span title="F · V = vedle krále, D = dál (z matu)">
+              Vzdál.{" "}
+              <strong className="text-foreground">
+                {value.distance ?? computedDistance ?? "—"}
+              </strong>
+              {computedDistance &&
+              value.distance &&
+              value.distance !== computedDistance ? (
+                <span className="ml-1 text-muted-foreground">
+                  (prog. {computedDistance})
+                </span>
+              ) : null}
+            </span>
+            <span title="T · koeficient obtížnosti">
+              Obtížnost <strong className="text-foreground">{difficulty}</strong>
+              {editFormula ? (
+                <>
+                  {" · "}
+                  <button
+                    type="button"
+                    className="text-muted-foreground underline decoration-border underline-offset-2 hover:text-foreground"
+                    onClick={() => setFormulaOpen((open) => !open)}
+                  >
+                    Vzorec
+                  </button>
+                </>
+              ) : null}
+            </span>
+          </div>
+          {editFormula && formulaOpen ? (
+            <input
+              type="text"
+              spellCheck={false}
+              autoFocus
+              className="h-8 w-full rounded-md border border-border bg-background px-2 font-mono text-[11px] text-foreground"
+              value={draftFormula}
+              title="q r s f · u b p z v o l ch"
+              onChange={(event) => setDraftFormula(event.target.value)}
+              onBlur={() => {
+                const next =
+                  draftFormula.trim() || DEFAULT_DIFFICULTY_FORMULA;
+                setDraftFormula(next);
+                setReviewPrefs({
+                  ...getReviewPrefs(),
+                  difficultyFormula: next,
+                });
+              }}
+              onKeyDown={(event) => {
+                if (event.key === "Escape") {
+                  setDraftFormula(formula);
+                  setFormulaOpen(false);
+                  return;
+                }
+                if (event.key !== "Enter") return;
+                (event.target as HTMLInputElement).blur();
+                setFormulaOpen(false);
+              }}
+            />
+          ) : null}
         </div>
       ) : null}
     </div>

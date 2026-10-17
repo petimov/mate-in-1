@@ -36,6 +36,7 @@ function Button({
   variant,
   size,
   asChild = false,
+  disabled,
   ...props
 }: React.ComponentProps<"button"> &
   VariantProps<typeof buttonVariants> & { asChild?: boolean }) {
@@ -44,6 +45,8 @@ function Button({
     <Comp
       className={cn(buttonVariants({ variant, size, className }))}
       {...props}
+      // false → undefined: React 19 hydration (null vs false) u disabled
+      disabled={disabled ? true : undefined}
     />
   );
 }

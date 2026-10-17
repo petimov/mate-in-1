@@ -339,11 +339,8 @@ export function ReviewSettings() {
                     difficultyFormula.trim() || prefs.difficultyFormula,
                 });
               }}
-              placeholder="q + r*2 + s*3 + …"
+              placeholder="(1 + 0.1*(q - 3)) * (1 + 0.25*s) * r * (1 + f)"
             />
-            <p className="text-xs text-muted-foreground">
-              Proměnné: q r s u b p z v o l ch
-            </p>
           </div>
         </div>
       </div>
